@@ -50,13 +50,16 @@ Unlike existing bias benchmarks that treat "balanced" as equidistant from all po
 ```
 reval/
 ├── pyproject.toml
+├── requirements.txt
 ├── README.md
 ├── AWS_SUBMISSION.md
 ├── CLAUDE.md (this file)
 ├── src/
 │   └── reval/
 │       ├── __init__.py
+│       ├── cli.py
 │       ├── runner.py
+│       ├── validate.py
 │       ├── scoring/
 │       │   ├── __init__.py
 │       │   ├── similarity.py
@@ -75,11 +78,9 @@ reval/
 │   ├── datasets/
 │   │   ├── us/
 │   │   └── india/
-│   ├── ground_truth/
 │   └── rubrics/
-├── tests/
+├── tests/           (not yet created)
 └── scripts/
-    ├── run_benchmark.py
     └── validate_dataset.py
 ```
 
@@ -88,22 +89,23 @@ reval/
 DONE:
 - README.md created with full project documentation
 - AWS_SUBMISSION.md created with hackathon submission text
+- pyproject.toml and requirements.txt initialized
+- JSON schema for eval validation (evals/schema.json)
+- Pydantic models (src/reval/models/eval.py)
+- Scoring functions: similarity, rubric, judge, parity
+- Async eval runner (src/reval/runner.py)
+- CLI entrypoint (src/reval/cli.py)
+- Dataset validation (src/reval/validate.py, scripts/validate_dataset.py)
+- Dataset directory structure with sample eval entries for US and India
+- Rubric templates (evals/rubrics/)
+- Eval config (evals/config.yaml)
 
 TODO:
-- Initialize pyproject.toml
-- Create JSON schema for eval validation
-- Create Pydantic models
-- Implement scoring functions (similarity, rubric, judge, parity)
-- Build async eval runner
-- Create dataset directory structure
-- Create rubric templates
-- Write validation scripts
-- Write unit tests
-- Create sample eval entries
+- Write unit tests (tests/ directory not yet created)
+- Create scripts/run_benchmark.py
+- Create evals/ground_truth/ directory and content
 
 ## Commands
-
-When implementation is done:
 
 ```bash
 # Validate dataset
