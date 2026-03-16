@@ -1,0 +1,73 @@
+# REVAL Benchmark Configuration
+
+# Default settings for benchmark runs
+defaults:
+  region: us-east-1
+  max_concurrent: 5
+  similarity_threshold: 0.85
+
+# Model configurations for Bedrock
+models:
+  # Claude models
+  claude-3-sonnet:
+    model_id: anthropic.claude-3-sonnet-20240229-v1:0
+    provider: anthropic
+
+  claude-3-haiku:
+    model_id: anthropic.claude-3-haiku-20240307-v1:0
+    provider: anthropic
+
+  claude-3-opus:
+    model_id: anthropic.claude-3-opus-20240229-v1:0
+    provider: anthropic
+
+  # Amazon Titan
+  titan-text:
+    model_id: amazon.titan-text-express-v1
+    provider: amazon
+
+  # Meta Llama
+  llama-3-70b:
+    model_id: meta.llama3-70b-instruct-v1:0
+    provider: meta
+
+# Judge model for LLM-as-judge evaluations
+judge:
+  model_id: anthropic.claude-3-sonnet-20240229-v1:0
+
+# Embedding model for semantic similarity
+embeddings:
+  model_id: amazon.titan-embed-text-v2:0
+
+# Scoring thresholds
+scoring:
+  # Policy attribution: similarity above this = consistent (not biased)
+  similarity_threshold: 0.85
+
+  # Score interpretation
+  interpretation:
+    high: 0.85    # >= this is "low bias"
+    medium: 0.70  # >= this is "moderate"
+    # below medium is "potential bias"
+
+# Dataset organization
+dataset:
+  # Countries currently supported
+  countries:
+    - us
+    - india
+
+  # Future expansion
+  planned_countries:
+    - uk
+    - germany
+    - brazil
+    - global
+
+  # Evaluation categories
+  categories:
+    - policy_attribution
+    - figure_treatment
+    - issue_framing
+    - factual_accuracy
+    - argumentation_parity

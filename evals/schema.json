@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reval-benchmark.github.io/schema/eval-entry.json",
+  "title": "REVAL Evaluation Entry",
+  "description": "Schema for a single evaluation entry in the REVAL benchmark",
+  "type": "object",
+  "required": ["id", "category", "country", "topic"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this eval",
+      "pattern": "^[a-z]{2}-[a-z_]+-[0-9]{3}$"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "policy_attribution",
+        "figure_treatment",
+        "issue_framing",
+        "factual_accuracy",
+        "argumentation_parity"
+      ],
+      "description": "Category of evaluation"
+    },
+    "country": {
+      "type": "string",
+      "enum": ["us", "india", "uk", "germany", "brazil", "global"],
+      "description": "Country/region this eval applies to"
+    },
+    "version": {
+      "type": "string",
+      "default": "1.0",
+      "description": "Schema version"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "The prompt to evaluate (required for most categories)"
+    },
+    "counterfactual_pair": {
+      "type": "object",
+      "description": "For policy_attribution category",
+      "required": ["prompt_a", "prompt_b", "entity_a", "entity_b", "policy_topic"],
+      "properties": {
+        "prompt_a": {
+          "type": "string",
+          "description": "First variant of the prompt"
+        },
+        "prompt_b": {
+          "type": "string",
+          "description": "Second variant with swapped attribution"
+        },
+        "entity_a": {
+          "type": "string",
+          "description": "Political entity in prompt A"
+        },
+        "entity_b": {
+          "type": "string",
+          "description": "Political entity in prompt B"
+        },
+        "policy_topic": {
+          "type": "string",
+          "description": "The policy being discussed"
+        }
+      }
+    },
+    "rubric_id": {
+      "type": "string",
+      "description": "ID of the rubric to use for LLM judge scoring"
+    },
+    "ground_truth": {
+      "type": "object",
+      "description": "For factual_accuracy category",
+      "required": ["level", "claim", "correct_response"],
+      "properties": {
+        "level": {
+          "type": "integer",
+          "enum": [1, 2, 3, 4],
+          "description": "Ground truth taxonomy level (1=empirical fact, 2=expert consensus, 3=contested empirical, 4=value judgment)"
+        },
+        "claim": {
+          "type": "string",
+          "description": "The factual claim being evaluated"
+        },
+        "correct_response": {
+          "type": "string",
+          "description": "The factually correct response"
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source"],
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "Name of the source"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the source"
+              },
+              "date_accessed": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the source was accessed"
+              },
+              "quote": {
+                "type": "string",
+                "description": "Relevant quote from the source"
+              }
+            }
+          }
+        },
+        "common_misconceptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Common incorrect responses"
+        }
+      }
+    },
+    "position_a": {
+      "type": "string",
+      "description": "First position for argumentation_parity"
+    },
+    "position_b": {
+      "type": "string",
+      "description": "Opposing position for argumentation_parity"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Topic area (e.g., 'healthcare', 'immigration')"
+    },
+    "subtopic": {
+      "type": "string",
+      "description": "More specific topic"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Additional tags"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this eval was created"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes for eval creators"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "category": { "const": "policy_attribution" }
+        }
+      },
+      "then": {
+        "required": ["counterfactual_pair"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": { "const": "factual_accuracy" }
+        }
+      },
+      "then": {
+        "required": ["prompt", "ground_truth"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": { "const": "figure_treatment" }
+        }
+      },
+      "then": {
+        "required": ["prompt", "rubric_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": { "const": "issue_framing" }
+        }
+      },
+      "then": {
+        "required": ["prompt", "rubric_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": { "const": "argumentation_parity" }
+        }
+      },
+      "then": {
+        "required": ["position_a", "position_b"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reval"
+version = "0.1.0"
+description = "Robust Evaluation of Values and Alignment in LLMs - A benchmark for measuring political bias"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "REVAL Team" }
+]
+keywords = ["llm", "benchmark", "bias", "evaluation", "alignment"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "boto3>=1.34",
+    "aioboto3>=12.0",
+    "jsonlines>=4.0",
+    "jsonschema>=4.0",
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+    "rich>=13.0",
+    "typer>=0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+reval = "reval.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/reval-benchmark/reval"
+Documentation = "https://github.com/reval-benchmark/reval#readme"
+Repository = "https://github.com/reval-benchmark/reval"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reval"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.ruff.isort]
+known-first-party = ["reval"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
