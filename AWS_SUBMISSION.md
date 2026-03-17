@@ -29,11 +29,11 @@ Character count: 768
 
 ## Game Plan
 
-Phase 1, Foundation, Weeks 1-4: Build core infrastructure in Python. Create Pydantic data models and JSON schema for eval entries. Implement semantic similarity scoring using Amazon Bedrock embeddings. Build basic LLM-as-judge evaluation using Claude via Bedrock. Develop async runner for parallel evaluation.
+Phase 1, Foundation: Build core infrastructure in Python. Create Pydantic data models and JSON schema for eval entries. Implement semantic similarity scoring using Amazon Bedrock embeddings. Build basic LLM-as-judge evaluation using Claude via Bedrock. Develop async runner for parallel evaluation.
 
-Phase 2, Initial Dataset, Weeks 5-9: Create 100 US-focused evaluations covering policy attribution and factual accuracy categories. Create 50 India-focused evaluations on economic policy and governance. Build ground truth database with source citations for factual claims. Validate all entries against schema.
+Phase 2, Initial Dataset: Create 100 US-focused evaluations covering policy attribution and factual accuracy categories. Create 50 India-focused evaluations on economic policy and governance. Build ground truth database with source citations for factual claims. Validate all entries against schema.
 
-Phase 3, Validation and Release, Weeks 10-12: Test framework on multiple models including Claude and open-source alternatives. Document methodology and limitations clearly. Open-source the framework and dataset. Write up findings and publish initial benchmark results.
+Phase 3, Validation and Release: Test framework on multiple models including Claude and open-source alternatives. Document methodology and limitations clearly. Open-source the framework and dataset. Write up findings and publish initial benchmark results.
 
 Future expansion: The framework is designed to scale to 500+ evaluations and additional countries. Community contributions can extend coverage to UK, Germany, Brazil, and other regions.
 

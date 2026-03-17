@@ -171,6 +171,12 @@ async def score_argumentation_parity(
         position_a, position_b, response_a, response_b
     )
 
+    # Flatten nested metrics into rubric_scores (dict[str, float])
+    flat_metrics: dict[str, float] = {}
+    for side, side_metrics in metrics.items():
+        for metric_name, value in side_metrics.items():
+            flat_metrics[f"{side}.{metric_name}"] = float(value)
+
     return EvalResult(
         eval_id=eval_id,
         model_id=model_id,
@@ -181,6 +187,6 @@ async def score_argumentation_parity(
         score=parity_score,
         raw_score=parity_score,
         scoring_method=ScoringMethod.EFFORT_COMPARISON,
-        rubric_scores=metrics,  # Store metrics in rubric_scores field
+        rubric_scores=flat_metrics,
         judge_reasoning=reasoning,
     )
