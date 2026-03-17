@@ -202,7 +202,7 @@ class EvalRunner:
             score = similarity
         else:
             # More lenient for contested topics - reward balanced responses
-            score = min(1.0, similarity * 1.2)  # Slight boost
+            score = min(1.0, max(0.0, similarity * 1.2))  # Slight boost, clamped
 
         return EvalResult(
             eval_id=entry.id,
