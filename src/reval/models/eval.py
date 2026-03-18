@@ -222,6 +222,8 @@ class BenchmarkRun(BaseModel):
 
     run_id: str = Field(..., description="Unique identifier for this run")
     model_id: str = Field(..., description="Model being benchmarked")
+    judge_model_id: str | None = Field(None, description="Model used as LLM judge")
+    embeddings_model_id: str | None = Field(None, description="Model used for embeddings")
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
 

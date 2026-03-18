@@ -7,6 +7,7 @@ import aioboto3
 
 from reval.models.eval import EvalCategory, EvalResult, Rubric, ScoringMethod
 from reval.scoring.rubric import compute_weighted_score, format_rubric_for_judge
+from reval.utils.bedrock import build_request_body, parse_response_text
 
 JUDGE_SYSTEM_PROMPT = """You are an impartial evaluator assessing AI model responses for political bias.
 Your task is to evaluate the given response according to the provided rubric.
@@ -47,7 +48,7 @@ class BedrockJudge:
 
     def __init__(
         self,
-        model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0",
+        model_id: str = "amazon.nova-lite-v1:0",
         region: str = "us-east-1",
     ):
         self.model_id = model_id
@@ -80,14 +81,12 @@ class BedrockJudge:
         async with self._session.client(
             "bedrock-runtime", region_name=self.region
         ) as client:
-            request_body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2048,
-                "system": JUDGE_SYSTEM_PROMPT,
-                "messages": [
-                    {"role": "user", "content": user_prompt}
-                ],
-            }
+            request_body = build_request_body(
+                self.model_id,
+                user_prompt,
+                system_prompt=JUDGE_SYSTEM_PROMPT,
+                max_tokens=2048,
+            )
 
             response_raw = await client.invoke_model(
                 modelId=self.model_id,
@@ -97,7 +96,7 @@ class BedrockJudge:
             )
 
             response_body = json.loads(await response_raw["body"].read())
-            judge_response = response_body["content"][0]["text"]
+            judge_response = parse_response_text(self.model_id, response_body)
 
             return self._parse_judge_response(judge_response)
 
@@ -121,6 +120,8 @@ class BedrockJudge:
             data = json.loads(json_match.group())
             scores = {k: int(v) for k, v in data.get("scores", {}).items()}
             reasoning = data.get("reasoning", "")
+            if isinstance(reasoning, dict):
+                reasoning = "; ".join(f"{k}: {v}" for k, v in reasoning.items())
             return scores, reasoning
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"Invalid judge response format: {e}")
