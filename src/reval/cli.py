@@ -194,6 +194,15 @@ def run(
 
     console.print(f"\n[green]Results saved to {output_file}[/green]")
 
+    # Generate HTML report
+    from reval.report import generate_html_report
+    import webbrowser
+
+    html_file = output / f"run_{timestamp}.html"
+    generate_html_report(benchmark_run, html_file)
+    console.print(f"[green]HTML report saved to {html_file}[/green]")
+    webbrowser.open(html_file.resolve().as_uri())
+
 
 @app.command()
 def info():

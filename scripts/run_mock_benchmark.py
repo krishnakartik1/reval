@@ -235,7 +235,15 @@ def main():
     output_file = results_dir / "mock_run.json"
     with open(output_file, "w") as f:
         json.dump(benchmark_run.model_dump(mode="json"), f, indent=2, default=str)
-    print(f"\nFull results saved to {output_file}\n")
+    print(f"\nFull results saved to {output_file}")
+
+    from reval.report import generate_html_report
+    import webbrowser
+
+    html_file = results_dir / "mock_run.html"
+    generate_html_report(benchmark_run, html_file)
+    print(f"HTML report saved to {html_file}\n")
+    webbrowser.open(html_file.resolve().as_uri())
 
 
 if __name__ == "__main__":
