@@ -68,7 +68,7 @@ class ParityJudge:
 
     def __init__(
         self,
-        model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0",
+        model_id: str = "us.anthropic.claude-3-5-haiku-20241022-v1:0",
         region: str = "us-east-1",
     ):
         self.model_id = model_id

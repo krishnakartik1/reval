@@ -8,17 +8,22 @@ defaults:
 
 # Model configurations for Bedrock
 models:
-  # Claude models
-  claude-3-sonnet:
-    model_id: anthropic.claude-3-sonnet-20240229-v1:0
+  # Claude models (active)
+  claude-haiku-3-5:
+    model_id: us.anthropic.claude-3-5-haiku-20241022-v1:0
     provider: anthropic
 
+  claude-sonnet-4:
+    model_id: us.anthropic.claude-sonnet-4-20250514-v1:0
+    provider: anthropic
+
+  claude-opus-4:
+    model_id: us.anthropic.claude-opus-4-6-v1
+    provider: anthropic
+
+  # Legacy (LEGACY status — avoid for new runs)
   claude-3-haiku:
     model_id: anthropic.claude-3-haiku-20240307-v1:0
-    provider: anthropic
-
-  claude-3-opus:
-    model_id: anthropic.claude-3-opus-20240229-v1:0
     provider: anthropic
 
   # Amazon Titan
@@ -33,7 +38,7 @@ models:
 
 # Judge model for LLM-as-judge evaluations
 judge:
-  model_id: anthropic.claude-3-sonnet-20240229-v1:0
+  model_id: us.anthropic.claude-3-5-haiku-20241022-v1:0
 
 # Embedding model for semantic similarity
 embeddings:
