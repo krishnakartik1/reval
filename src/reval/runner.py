@@ -23,6 +23,7 @@ from reval.scoring.judge import BedrockJudge, score_with_judge
 from reval.scoring.parity import ParityJudge, score_argumentation_parity
 from reval.scoring.rubric import load_rubrics_from_directory
 from reval.scoring.similarity import score_policy_attribution
+from reval.utils.bedrock import build_request_body, parse_response_text
 from reval.utils.embeddings import BedrockEmbeddings
 
 
@@ -52,34 +53,7 @@ class ModelClient:
         async with self._session.client(
             "bedrock-runtime", region_name=self.region
         ) as client:
-            # Handle different model providers
-            if self.model_id.startswith("anthropic."):
-                request_body = {
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 4096,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
-            elif self.model_id.startswith("amazon."):
-                request_body = {
-                    "inputText": prompt,
-                    "textGenerationConfig": {
-                        "maxTokenCount": 4096,
-                        "temperature": 0.7,
-                    },
-                }
-            elif self.model_id.startswith("meta."):
-                request_body = {
-                    "prompt": prompt,
-                    "max_gen_len": 4096,
-                    "temperature": 0.7,
-                }
-            else:
-                # Default to Anthropic format
-                request_body = {
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 4096,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
+            request_body = build_request_body(self.model_id, prompt)
 
             response = await client.invoke_model(
                 modelId=self.model_id,
@@ -89,16 +63,7 @@ class ModelClient:
             )
 
             response_body = json.loads(await response["body"].read())
-
-            # Parse response based on model provider
-            if self.model_id.startswith("anthropic."):
-                text = response_body["content"][0]["text"]
-            elif self.model_id.startswith("amazon."):
-                text = response_body["results"][0]["outputText"]
-            elif self.model_id.startswith("meta."):
-                text = response_body["generation"]
-            else:
-                text = response_body.get("content", [{}])[0].get("text", "")
+            text = parse_response_text(self.model_id, response_body)
 
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             return text, latency_ms
@@ -113,6 +78,8 @@ class EvalRunner:
         rubrics_dir: str | Path | None = None,
         region: str = "us-east-1",
         max_concurrent: int = 5,
+        judge_model_id: str | None = None,
+        embeddings_model_id: str | None = None,
     ):
         self.model_id = model_id
         self.region = region
@@ -120,9 +87,16 @@ class EvalRunner:
 
         # Initialize clients
         self.model_client = ModelClient(model_id, region)
-        self.embeddings = BedrockEmbeddings(region=region)
-        self.judge = BedrockJudge(region=region)
-        self.parity_judge = ParityJudge(region=region)
+        if embeddings_model_id:
+            self.embeddings = BedrockEmbeddings(model_id=embeddings_model_id, region=region)
+        else:
+            self.embeddings = BedrockEmbeddings(region=region)
+        if judge_model_id:
+            self.judge = BedrockJudge(model_id=judge_model_id, region=region)
+            self.parity_judge = ParityJudge(model_id=judge_model_id, region=region)
+        else:
+            self.judge = BedrockJudge(region=region)
+            self.parity_judge = ParityJudge(region=region)
 
         # Load rubrics if directory provided
         self.rubrics: dict[str, Rubric] = {}
@@ -280,6 +254,8 @@ class EvalRunner:
         run = BenchmarkRun(
             run_id=str(uuid.uuid4()),
             model_id=self.model_id,
+            judge_model_id=self.judge.model_id,
+            embeddings_model_id=self.embeddings.model_id,
             eval_ids=[e.id for e in evals],
             total_evals=len(evals),
         )

@@ -96,8 +96,30 @@ def run(
         "--max-concurrent",
         help="Maximum concurrent API calls",
     ),
+    judge_model: Optional[str] = typer.Option(
+        None,
+        "--judge-model",
+        help="Model ID for LLM judge (default: from config.yaml)",
+    ),
+    embeddings_model: Optional[str] = typer.Option(
+        None,
+        "--embeddings-model",
+        help="Model ID for embeddings (default: from config.yaml)",
+    ),
+    config_path: Path = typer.Option(
+        Path("evals/config.yaml"),
+        "--config",
+        help="Path to config file",
+    ),
 ):
     """Run the benchmark on a model."""
+    from reval.config import load_config, resolve_model_id
+
+    config = load_config(config_path)
+    model = resolve_model_id(model, config)
+    judge_model_id = judge_model or config.judge_model_id
+    embeddings_model_id = embeddings_model or config.embeddings_model_id
+
     # Parse filters
     country_filter = Country(country) if country else None
     category_filter = EvalCategory(category) if category else None
@@ -118,6 +140,8 @@ def run(
         rubrics_dir=rubrics if rubrics.exists() else None,
         region=region,
         max_concurrent=max_concurrent,
+        judge_model_id=judge_model_id,
+        embeddings_model_id=embeddings_model_id,
     )
 
     # Run benchmark with progress

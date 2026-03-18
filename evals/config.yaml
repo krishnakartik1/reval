@@ -38,7 +38,7 @@ models:
 
 # Judge model for LLM-as-judge evaluations
 judge:
-  model_id: us.anthropic.claude-3-5-haiku-20241022-v1:0
+  model_id: amazon.nova-lite-v1:0
 
 # Embedding model for semantic similarity
 embeddings:

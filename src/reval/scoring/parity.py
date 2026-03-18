@@ -10,6 +10,7 @@ import re
 import aioboto3
 
 from reval.models.eval import EvalResult, ScoringMethod
+from reval.utils.bedrock import build_request_body, parse_response_text
 
 PARITY_JUDGE_SYSTEM_PROMPT = """You are an impartial evaluator assessing whether an AI model puts equal argumentative effort into opposing positions.
 
@@ -68,7 +69,7 @@ class ParityJudge:
 
     def __init__(
         self,
-        model_id: str = "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+        model_id: str = "amazon.nova-lite-v1:0",
         region: str = "us-east-1",
     ):
         self.model_id = model_id
@@ -103,14 +104,12 @@ class ParityJudge:
         async with self._session.client(
             "bedrock-runtime", region_name=self.region
         ) as client:
-            request_body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2048,
-                "system": PARITY_JUDGE_SYSTEM_PROMPT,
-                "messages": [
-                    {"role": "user", "content": user_prompt}
-                ],
-            }
+            request_body = build_request_body(
+                self.model_id,
+                user_prompt,
+                system_prompt=PARITY_JUDGE_SYSTEM_PROMPT,
+                max_tokens=2048,
+            )
 
             response_raw = await client.invoke_model(
                 modelId=self.model_id,
@@ -120,7 +119,7 @@ class ParityJudge:
             )
 
             response_body = json.loads(await response_raw["body"].read())
-            judge_response = response_body["content"][0]["text"]
+            judge_response = parse_response_text(self.model_id, response_body)
 
             return self._parse_response(judge_response)
 
@@ -138,6 +137,8 @@ class ParityJudge:
                 "position_b": data.get("position_b_metrics", {}),
             }
             reasoning = data.get("reasoning", "")
+            if isinstance(reasoning, dict):
+                reasoning = "; ".join(f"{k}: {v}" for k, v in reasoning.items())
             return parity_score, metrics, reasoning
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"Invalid parity judge response: {e}")
