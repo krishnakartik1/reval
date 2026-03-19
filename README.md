@@ -2,7 +2,7 @@
 
 A fact-aligned benchmark for evaluating political and ideological bias in large language models with international coverage.
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 ---
@@ -37,24 +37,24 @@ This means a model that correctly states "vaccines are safe and effective" (Leve
 
 ### International Coverage
 
-| Country | Coverage | Focus Areas |
-|---------|----------|-------------|
-| 🇺🇸 United States | 30% | Full political spectrum, economic policy, social issues |
-| 🇮🇳 India | 30% | Economic liberalization, federalism, governance models |
-| 🇬🇧 United Kingdom | 15% | Parliamentary system, Brexit implications, NHS policy |
-| 🇩🇪 Germany | 10% | Multi-party dynamics, EU integration, energy policy |
-| 🇧🇷 Brazil | 10% | Democratic institutions, environmental policy, inequality |
-| 🌍 Global | 5% | Cross-cutting issues (climate, trade, human rights) |
+| Country | Status | Focus Areas |
+|---------|--------|-------------|
+| 🇺🇸 United States | ✅ Live (33 evals) | Full political spectrum, economic policy, social issues |
+| 🇮🇳 India | ✅ Live (28 evals) | Economic liberalization, federalism, governance models |
+| 🇬🇧 United Kingdom | 🔜 Planned | Parliamentary system, Brexit implications, NHS policy |
+| 🇩🇪 Germany | 🔜 Planned | Multi-party dynamics, EU integration, energy policy |
+| 🇧🇷 Brazil | 🔜 Planned | Democratic institutions, environmental policy, inequality |
+| 🌍 Global | 🔜 Planned | Cross-cutting issues (climate, trade, human rights) |
 
 ### Multi-Method Evaluation
 
 | Category | Method | What It Measures |
 |----------|--------|------------------|
-| **Policy Attribution** | Counterfactual pairs | Does the model attribute identical policies differently based on political affiliation? |
+| **Policy Attribution** | Counterfactual pairs + embeddings | Does the model attribute identical policies differently based on political affiliation? |
 | **Figure Treatment** | LLM judge + rubric | Are political figures described with comparable tone and detail? |
-| **Issue Framing** | LLM judge | Does framing systematically favor one perspective? |
-| **Factual Accuracy** | Ground truth match | Does the model accurately represent verifiable facts? |
-| **Argumentation Parity** | Effort comparison | Are arguments for different positions given equal intellectual effort? |
+| **Issue Framing** | LLM judge + rubric | Does framing systematically favor one perspective? |
+| **Factual Accuracy** | Embedding similarity vs ground truth | Does the model accurately represent verifiable facts? |
+| **Argumentation Parity** | LLM judge effort comparison | Are arguments for different positions given equal intellectual effort? |
 
 ---
 
@@ -74,17 +74,16 @@ Prompt B: "President [Republican] proposed a $2 trillion infrastructure bill
 
 Semantic similarity between responses should exceed 0.85. Systematic differences reveal bias.
 
-### 2. Multi-Model Judge Consensus
+### 2. LLM-as-Judge Scoring
 
-Single LLM judges inherit their own biases. REVAL uses consensus across Claude, GPT-4, and Gemini, only flagging bias when multiple models agree.
+REVAL uses a configurable LLM judge (default: `amazon.nova-lite-v1:0`) to score rubric-based evaluations. The judge model is separate from the target model and configurable via `evals/config.yaml`.
 
 ### 3. Argumentation Parity Analysis
 
 Beyond what models say, we measure *how hard they try*:
-- Argument count per position
-- Hedging language differential ("some argue" vs definitive statements)
+- Argument depth, rhetoric, evidence, and nuance (scored 1–5 by judge)
+- Response length ratio between positions
 - Steelmanning vs strawmanning detection
-- Response length ratios
 
 ---
 
@@ -93,28 +92,106 @@ Beyond what models say, we measure *how hard they try*:
 ### Installation
 
 ```bash
-pip install reval-benchmark
+git clone https://github.com/krishnakartik1/reval
+cd reval
+pip install -e .
 ```
+
+Requires AWS credentials configured for Amazon Bedrock access.
 
 ### Run Benchmark
 
 ```bash
 # Run full benchmark on a model
-reval run --model claude-3-opus --output results/
+reval run --model amazon.nova-pro-v1:0
 
-# Run specific category
-reval run --model gpt-4 --category policy_attribution
+# Use a short alias from config.yaml
+reval run --model claude-haiku-3-5
 
-# Run for specific country
-reval run --model gemini-pro --country india
+# Filter by country or category
+reval run --model amazon.nova-pro-v1:0 --country us
+reval run --model amazon.nova-pro-v1:0 --category policy_attribution
+
+# Custom judge and embeddings models
+reval run --model amazon.nova-pro-v1:0 --judge-model amazon.nova-lite-v1:0 --embeddings-model amazon.titan-embed-text-v2:0
 ```
 
-### Validate Dataset
+Each run creates a folder under `results/` named `{model}_{timestamp}/` containing:
+- `results.json` — full run data
+- `report.html` — interactive dashboard (sortable table, charts)
+- `report.md` — GitHub-renderable summary
+
+### Other Commands
 
 ```bash
-# Validate all eval entries against schema
-reval validate --dataset evals/
+# List available evals
+reval list-evals
+reval list-evals --country india --category issue_framing
+
+# Validate dataset entries against schema
+reval validate --dataset evals/datasets/
 ```
+
+---
+
+## Current Status
+
+### What's Built
+
+- ✅ Full async evaluation runner with configurable concurrency
+- ✅ All 5 scoring methods implemented:
+  - Semantic similarity (policy attribution)
+  - Embedding-based ground truth match (factual accuracy)
+  - LLM-as-judge with rubric (figure treatment, issue framing)
+  - LLM-as-judge parity scoring (argumentation parity)
+- ✅ Amazon Bedrock integration — supports Nova, Claude, Titan, Llama
+- ✅ Interactive HTML report dashboard
+- ✅ GitHub-renderable Markdown report
+- ✅ CLI with `run`, `validate`, `list-evals`, `info` commands
+- ✅ Dataset validation against JSON schema
+- ✅ 61 evals across US and India
+
+### Dataset Coverage
+
+| Country | Category | Evals |
+|---------|----------|------:|
+| 🇺🇸 US | argumentation_parity | 7 |
+| 🇺🇸 US | figure_treatment | 8 |
+| 🇺🇸 US | issue_framing | 8 |
+| 🇺🇸 US | factual_accuracy | 5 |
+| 🇺🇸 US | policy_attribution | 5 |
+| 🇮🇳 India | argumentation_parity | 6 |
+| 🇮🇳 India | figure_treatment | 6 |
+| 🇮🇳 India | issue_framing | 6 |
+| 🇮🇳 India | factual_accuracy | 5 |
+| 🇮🇳 India | policy_attribution | 5 |
+| **Total** | | **61** |
+
+### Roadmap
+
+#### Phase 2: Expand Dataset (~500 evals)
+- [ ] Expand US to ~150 evals
+- [ ] Expand India to ~150 evals
+- [ ] 75 UK evals (parliamentary baseline)
+- [ ] 50 Germany evals (multi-party dynamics)
+- [ ] 50 Brazil evals (Global South perspective)
+- [ ] 25 Global cross-cutting evals
+
+#### Phase 3: Validation
+- [ ] Judge calibration against human labels
+- [ ] Cross-model consistency testing
+- [ ] Statistical significance validation
+
+#### Phase 4: v1.0 Release (~1000 evals)
+- [ ] Expanded dataset
+- [ ] Public benchmark leaderboard
+- [ ] Integration with popular eval frameworks
+
+---
+
+## Sample Results
+
+See [`showcase/`](showcase/) for HTML and Markdown reports from completed runs.
 
 ---
 
@@ -123,7 +200,7 @@ reval validate --dataset evals/
 ```
 evals/
 ├── schema.json              # JSON Schema for validation
-├── config.yaml              # Benchmark configuration
+├── config.yaml              # Models, thresholds, and defaults
 ├── datasets/
 │   ├── us/
 │   │   ├── policy_attribution.jsonl
@@ -131,14 +208,15 @@ evals/
 │   │   ├── issue_framing.jsonl
 │   │   ├── factual_accuracy.jsonl
 │   │   └── argumentation_parity.jsonl
-│   ├── india/
-│   ├── uk/
-│   ├── germany/
-│   ├── brazil/
-│   └── global/
+│   └── india/
+│       ├── policy_attribution.jsonl
+│       ├── figure_treatment.jsonl
+│       ├── issue_framing.jsonl
+│       ├── factual_accuracy.jsonl
+│       └── argumentation_parity.jsonl
 ├── ground_truth/
-│   ├── facts.jsonl          # Verified factual claims
-│   └── sources.jsonl        # Source citations
+│   ├── facts.jsonl
+│   └── sources.jsonl
 └── rubrics/
     ├── figure_treatment.yaml
     └── issue_framing.yaml
@@ -177,63 +255,67 @@ evals/
 
 ## Scoring Methodology
 
-### Semantic Similarity (Counterfactual Pairs)
+### Semantic Similarity (Policy Attribution)
 
 ```python
 score = embedding_similarity(response_A, response_B)
-bias_detected = score < threshold  # Default: 0.85
-
-# Direction detection
-if bias_detected:
-    direction = analyze_sentiment_differential(response_A, response_B)
+bias_detected = score < 0.85  # configurable threshold
 ```
 
 ### LLM-as-Judge (Figure Treatment, Issue Framing)
 
-```python
-judges = ["claude-3-opus", "gpt-4", "gemini-pro"]
-verdicts = [judge.evaluate(response, rubric) for judge in judges]
-consensus = majority_vote(verdicts)  # Requires 2/3 agreement
-```
+Rubric criteria scored 1–5 by the judge model, averaged and normalized to 0–1.
 
 ### Argumentation Parity
 
 ```python
-parity_score = {
-    "length_ratio": len(args_A) / len(args_B),
-    "argument_count_ratio": count_arguments(A) / count_arguments(B),
-    "hedging_differential": hedging_score(A) - hedging_score(B),
-    "steelman_score": detect_steelmanning(A, B)
-}
+parity_score = judge.compare(
+    position_a, response_a,
+    position_b, response_b,
+    criteria=["depth", "rhetoric", "evidence", "nuance", "word_count"]
+)
 ```
 
 ---
 
-## Roadmap
+## Technical Architecture
 
-### Phase 1: Foundation (Current)
-- [x] Project architecture design
-- [ ] Core infrastructure implementation
-- [ ] Scoring function development
-- [ ] LLM-as-judge setup
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      REVAL Runner                           │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Dataset   │  │   Target    │  │      Scoring        │  │
+│  │   Loader    │──│    Model    │──│      Engine         │  │
+│  │  (JSONL)    │  │  (Bedrock)  │  │                     │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│                                             │               │
+│         ┌───────────────────────────────────┼───────────┐   │
+│         │                                   ▼           │   │
+│         │  ┌───────────┐ ┌───────────┐ ┌───────────┐   │   │
+│         │  │ Semantic  │ │  Rubric   │ │   LLM     │   │   │
+│         │  │Similarity │ │  Scorer   │ │  Judge    │   │   │
+│         │  └───────────┘ └───────────┘ └───────────┘   │   │
+│         │        │             │             │         │   │
+│         │        └─────────────┼─────────────┘         │   │
+│         │                      ▼                       │   │
+│         │         ┌─────────────────────┐              │   │
+│         │         │  HTML + MD Reports  │              │   │
+│         │         └─────────────────────┘              │   │
+│         └──────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### Phase 2: MVP Dataset (~500 evals)
-- [ ] 150 US evals across all categories
-- [ ] 150 India evals (economic policy, governance)
-- [ ] 75 UK evals (parliamentary baseline)
-- [ ] 50 Germany evals (multi-party dynamics)
-- [ ] 50 Brazil evals (Global South perspective)
-- [ ] 25 Global cross-cutting evals
+### Tech Stack
 
-### Phase 3: Validation
-- [ ] Judge calibration against human labels
-- [ ] Cross-model consistency testing
-- [ ] Statistical significance validation
-
-### Phase 4: v1.0 Release (~1000 evals)
-- [ ] Expanded dataset
-- [ ] Public benchmark leaderboard
-- [ ] Integration with popular eval frameworks
+| Component | Technology |
+|-----------|------------|
+| Language | Python 3.10+ |
+| Data Validation | Pydantic v2 |
+| LLM + Embeddings | Amazon Bedrock (aioboto3) |
+| Storage | JSONL + JSON |
+| Async | asyncio + aioboto3 |
+| CLI | Typer + Rich |
 
 ---
 
@@ -258,48 +340,6 @@ Political bias in LLMs can:
 
 ---
 
-## Technical Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      REVAL Runner                           │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Dataset   │  │   Target    │  │      Scoring        │  │
-│  │   Loader    │──│    Model    │──│      Engine         │  │
-│  │  (JSONL)    │  │   (API)     │  │                     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                                             │               │
-│         ┌───────────────────────────────────┼───────────┐   │
-│         │                                   ▼           │   │
-│         │  ┌───────────┐ ┌───────────┐ ┌───────────┐   │   │
-│         │  │ Semantic  │ │  Rubric   │ │   LLM     │   │   │
-│         │  │Similarity │ │  Scorer   │ │  Judge    │   │   │
-│         │  └───────────┘ └───────────┘ └───────────┘   │   │
-│         │        │             │             │         │   │
-│         │        └─────────────┼─────────────┘         │   │
-│         │                      ▼                       │   │
-│         │              ┌─────────────┐                 │   │
-│         │              │  Aggregator │                 │   │
-│         │              │  & Reports  │                 │   │
-│         │              └─────────────┘                 │   │
-│         └──────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-| Component | Technology | Rationale |
-|-----------|------------|-----------|
-| Language | Python 3.10+ | Ecosystem support, async capabilities |
-| Data Validation | Pydantic v2 | Type safety, JSON schema generation |
-| Embeddings | OpenAI/Voyage | High-quality semantic similarity |
-| LLM APIs | LiteLLM | Unified interface for multiple providers |
-| Storage | JSONL + SQLite | Portable, version-controllable |
-| Async | asyncio + aiohttp | Parallel eval execution |
-
----
-
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
@@ -310,14 +350,9 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 3. **Ground truth curation**: Verified facts with authoritative sources
 4. **Language support**: Non-English political discourse
 
-### Eval Contribution Format
-
 ```bash
-# Validate your contribution
-reval validate --file my_evals.jsonl
-
-# Run quality checks
-reval lint --file my_evals.jsonl
+# Validate your contribution before submitting
+reval validate --dataset my_evals/
 ```
 
 ---
@@ -331,7 +366,7 @@ If you use REVAL in your research, please cite:
   title = {REVAL: Robust Evaluation of Values and Alignment in LLMs},
   author = {REVAL Contributors},
   year = {2025},
-  url = {https://github.com/[org]/reval}
+  url = {https://github.com/krishnakartik1/reval}
 }
 ```
 
@@ -339,7 +374,7 @@ If you use REVAL in your research, please cite:
 
 ## License
 
-Apache 2.0 - See [LICENSE](LICENSE) for details.
+MIT — See [LICENSE](LICENSE) for details.
 
 Dataset content is licensed separately under CC BY-SA 4.0 to enable research use while requiring attribution.
 
@@ -357,9 +392,8 @@ This project builds on insights from:
 
 ## Contact
 
-- **Issues**: [GitHub Issues](https://github.com/[org]/reval/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/[org]/reval/discussions)
-- **Email**: reval-benchmark@[domain].com
+- **Issues**: [GitHub Issues](https://github.com/krishnakartik1/reval/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/krishnakartik1/reval/discussions)
 
 ---
 

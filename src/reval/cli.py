@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -184,24 +183,15 @@ def run(
     console.print(f"Completed: {benchmark_run.completed_evals}/{benchmark_run.total_evals}")
     console.print(f"Failed: {benchmark_run.failed_evals}")
 
-    # Save results
-    output.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = output / f"run_{timestamp}.json"
-
-    with open(output_file, "w") as f:
-        json.dump(benchmark_run.model_dump(mode="json"), f, indent=2, default=str)
-
-    console.print(f"\n[green]Results saved to {output_file}[/green]")
-
-    # Generate HTML report
-    from reval.report import generate_html_report
+    # Save results and generate reports
+    from reval.report import save_run_outputs
     import webbrowser
 
-    html_file = output / f"run_{timestamp}.html"
-    generate_html_report(benchmark_run, html_file)
-    console.print(f"[green]HTML report saved to {html_file}[/green]")
-    webbrowser.open(html_file.resolve().as_uri())
+    run_dir = save_run_outputs(benchmark_run, output)
+    console.print(f"\n[green]Results saved to {run_dir}/[/green]")
+    console.print(f"[green]HTML report: {run_dir / 'report.html'}[/green]")
+    console.print(f"[green]Markdown report: {run_dir / 'report.md'}[/green]")
+    webbrowser.open((run_dir / "report.html").resolve().as_uri())
 
 
 @app.command()
