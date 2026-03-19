@@ -229,21 +229,13 @@ def main():
     print(f"\nCompleted: {benchmark_run.completed_evals}/{benchmark_run.total_evals}  "
           f"Failed: {benchmark_run.failed_evals}")
 
-    # Save results
-    results_dir = Path(__file__).parent.parent / "results"
-    results_dir.mkdir(exist_ok=True)
-    output_file = results_dir / "mock_run.json"
-    with open(output_file, "w") as f:
-        json.dump(benchmark_run.model_dump(mode="json"), f, indent=2, default=str)
-    print(f"\nFull results saved to {output_file}")
-
-    from reval.report import generate_html_report
+    from reval.report import save_run_outputs
     import webbrowser
 
-    html_file = results_dir / "mock_run.html"
-    generate_html_report(benchmark_run, html_file)
-    print(f"HTML report saved to {html_file}\n")
-    webbrowser.open(html_file.resolve().as_uri())
+    results_dir = Path(__file__).parent.parent / "results"
+    run_dir = save_run_outputs(benchmark_run, results_dir, run_name="mock_run")
+    print(f"\nOutputs saved to {run_dir}/")
+    webbrowser.open((run_dir / "report.html").resolve().as_uri())
 
 
 if __name__ == "__main__":
