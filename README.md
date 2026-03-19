@@ -331,7 +331,7 @@ If you use REVAL in your research, please cite:
   title = {REVAL: Robust Evaluation of Values and Alignment in LLMs},
   author = {REVAL Contributors},
   year = {2025},
-  url = {https://github.com/[org]/reval}
+  url = {https://github.com/krishnakartik1/reval}
 }
 ```
 
@@ -357,8 +357,8 @@ This project builds on insights from:
 
 ## Contact
 
-- **Issues**: [GitHub Issues](https://github.com/[org]/reval/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/[org]/reval/discussions)
+- **Issues**: [GitHub Issues](https://github.com/krishnakartik1/reval/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/krishnakartik1/reval/discussions)
 - **Email**: reval-benchmark@[domain].com
 
 ---
