@@ -99,6 +99,7 @@ Rules:
 - Live-API tests belong in `evaluations/`, never in `tests/`.
 - **Minimum 85% coverage required** on the `reval` package.
 - When touching the runner's scoring paths, add an integration eval under `evaluations/` that verifies the new field is populated end-to-end.
+- **Any change to LLM-driven behavior requires a live eval in the same PR, not just a unit test.** This includes prompt templates, new fields the LLM is asked to fill, parse/validation logic that consumes LLM output, sampling parameters passed through `LLMProvider.acomplete`, and new fields on `CompletionResult`. Unit tests with mocked responses prove the parser handles a known payload; the eval proves a real model actually produces that payload under your new prompt. Ship both in the same PR.
 - `reval.contracts` must stay zero-dep (enforced by `tests/test_contracts_imports.py`). Do not import aioboto3 / numpy / httpx / anthropic / openai from anything reachable through `reval.contracts`.
 
 ## Linting & Formatting — Hard Gates
