@@ -10,6 +10,7 @@ same async contract.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import ClassVar
 
@@ -40,8 +41,15 @@ class MinimaxProvider(LLMProvider):
         client: anthropic.AsyncAnthropic | None = None,
     ) -> None:
         self.model_id = model_id
+        resolved_key = api_key or os.environ.get("MINIMAX_API_KEY")
+        if client is None and not resolved_key:
+            raise ValueError(
+                "MinimaxProvider requires an api_key argument or MINIMAX_API_KEY "
+                "in the environment; the Anthropic SDK's ANTHROPIC_API_KEY fallback "
+                "is wrong for the MiniMax endpoint."
+            )
         self._client = client or anthropic.AsyncAnthropic(
-            api_key=api_key,
+            api_key=resolved_key,
             base_url=base_url,
         )
 
