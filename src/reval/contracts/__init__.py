@@ -1,13 +1,13 @@
-"""REVAL - Robust Evaluation of Values and Alignment in LLMs.
+"""reval.contracts — shared data contracts with zero runtime dependencies.
 
-A benchmark for measuring political bias in LLMs using fact-aligned scoring.
+This namespace is the source of truth for types both reval and
+reval-factual-collector rely on. It intentionally imports only `pydantic` +
+stdlib; see `tests/test_contracts_imports.py` for the zero-dep guard.
 """
 
-import logging
-
-from reval.contracts import (
+from reval.contracts.manifest import RunManifestMixin, get_git_sha
+from reval.contracts.models import (
     BenchmarkRun,
-    CompletionResult,
     CounterfactualPair,
     Country,
     EvalCategory,
@@ -16,21 +16,16 @@ from reval.contracts import (
     FigurePair,
     GroundTruth,
     GroundTruthLevel,
-    LLMProvider,
-    RateLimitError,
     Rubric,
     RubricCriterion,
-    RunManifestMixin,
     ScoringMethod,
     SourceCitation,
-    get_git_sha,
 )
-
-__version__ = "0.1.0"
-
-# Library-convention root logger. Applications are expected to configure
-# their own handlers; reval stays quiet by default.
-logging.getLogger(__name__).addHandler(logging.NullHandler())
+from reval.contracts.provider import (
+    CompletionResult,
+    LLMProvider,
+    RateLimitError,
+)
 
 __all__ = [
     "BenchmarkRun",
@@ -50,6 +45,5 @@ __all__ = [
     "RunManifestMixin",
     "ScoringMethod",
     "SourceCitation",
-    "__version__",
     "get_git_sha",
 ]

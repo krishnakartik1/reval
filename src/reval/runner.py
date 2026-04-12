@@ -1,123 +1,78 @@
-"""Async evaluation runner for REVAL benchmark."""
+"""Async evaluation runner for reval benchmark."""
+
+from __future__ import annotations
 
 import asyncio
-import json
-import time
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-import aioboto3
 import jsonlines
 
-from reval.models.eval import (
+from reval.contracts import (
     BenchmarkRun,
     Country,
     EvalCategory,
     EvalEntry,
     EvalResult,
+    LLMProvider,
     Rubric,
     ScoringMethod,
+    get_git_sha,
 )
 from reval.scoring.judge import BedrockJudge, score_with_judge
 from reval.scoring.parity import ParityJudge, score_argumentation_parity
 from reval.scoring.rubric import load_rubrics_from_directory
 from reval.scoring.similarity import score_policy_attribution
-from reval.utils.bedrock import build_request_body, parse_response_text
 from reval.utils.embeddings import BedrockEmbeddings
 
-
-class ModelClient:
-    """Client for invoking models via Amazon Bedrock."""
-
-    def __init__(
-        self,
-        model_id: str,
-        region: str = "us-east-1",
-    ):
-        self.model_id = model_id
-        self.region = region
-        self._session = aioboto3.Session()
-
-    async def generate(self, prompt: str) -> tuple[str, int]:
-        """Generate a response from the model.
-
-        Args:
-            prompt: The prompt to send
-
-        Returns:
-            Tuple of (response text, latency in ms)
-        """
-        start_time = time.perf_counter()
-
-        async with self._session.client(
-            "bedrock-runtime", region_name=self.region
-        ) as client:
-            request_body = build_request_body(self.model_id, prompt)
-
-            response = await client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(request_body),
-                contentType="application/json",
-                accept="application/json",
-            )
-
-            response_body = json.loads(await response["body"].read())
-            text = parse_response_text(self.model_id, response_body)
-
-            latency_ms = int((time.perf_counter() - start_time) * 1000)
-            return text, latency_ms
+logger = logging.getLogger(__name__)
 
 
 class EvalRunner:
-    """Async runner for REVAL benchmark evaluations."""
+    """Async runner for reval benchmark evaluations.
+
+    Callers construct the runner with a pre-built `LLMProvider` (the system
+    under test), a `BedrockJudge`, a `ParityJudge`, and a `BedrockEmbeddings`
+    instance. The CLI builds all four via `provider_from_config` + direct
+    construction; tests can inject their own mocks.
+    """
 
     def __init__(
         self,
-        model_id: str,
+        provider: LLMProvider,
+        judge: BedrockJudge,
+        parity_judge: ParityJudge,
+        embeddings: BedrockEmbeddings,
         rubrics_dir: str | Path | None = None,
-        region: str = "us-east-1",
         max_concurrent: int = 5,
-        judge_model_id: str | None = None,
-        embeddings_model_id: str | None = None,
     ):
-        self.model_id = model_id
-        self.region = region
+        self.provider = provider
+        self.judge = judge
+        self.parity_judge = parity_judge
+        self.embeddings = embeddings
         self.max_concurrent = max_concurrent
 
-        # Initialize clients
-        self.model_client = ModelClient(model_id, region)
-        if embeddings_model_id:
-            self.embeddings = BedrockEmbeddings(
-                model_id=embeddings_model_id, region=region
-            )
-        else:
-            self.embeddings = BedrockEmbeddings(region=region)
-        if judge_model_id:
-            self.judge = BedrockJudge(model_id=judge_model_id, region=region)
-            self.parity_judge = ParityJudge(model_id=judge_model_id, region=region)
-        else:
-            self.judge = BedrockJudge(region=region)
-            self.parity_judge = ParityJudge(region=region)
-
-        # Load rubrics if directory provided
         self.rubrics: dict[str, Rubric] = {}
         if rubrics_dir:
             self.rubrics = load_rubrics_from_directory(rubrics_dir)
 
-        # Semaphore for rate limiting
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
+    @property
+    def model_id(self) -> str:
+        """Return the provider's model id (convenience for callers/reports)."""
+        return self.provider.model_id
+
+    async def _generate(self, prompt: str) -> tuple[str, int]:
+        """Run a single completion against the system-under-test provider."""
+        result = await self.provider.acomplete(system=None, user=prompt)
+        return result.text, result.latency_ms
+
     async def run_single_eval(self, entry: EvalEntry) -> EvalResult:
-        """Run a single evaluation.
-
-        Args:
-            entry: The evaluation entry to run
-
-        Returns:
-            EvalResult with scores
-        """
+        """Run a single evaluation."""
         async with self._semaphore:
             if entry.category == EvalCategory.POLICY_ATTRIBUTION:
                 return await self._run_policy_attribution(entry)
@@ -139,16 +94,15 @@ class EvalRunner:
         if not pair:
             raise ValueError("Policy attribution requires counterfactual_pair")
 
-        # Get responses to both prompts
-        response_a, _ = await self.model_client.generate(pair.prompt_a)
-        response_b, latency = await self.model_client.generate(pair.prompt_b)
+        response_a, _ = await self._generate(pair.prompt_a)
+        response_b, latency = await self._generate(pair.prompt_b)
 
         result = await score_policy_attribution(
             pair=pair,
             response_a=response_a,
             response_b=response_b,
             eval_id=entry.id,
-            model_id=self.model_id,
+            model_id=self.provider.model_id,
             embeddings_client=self.embeddings,
         )
         result.latency_ms = latency
@@ -161,7 +115,7 @@ class EvalRunner:
         if not entry.counterfactual_prompt:
             raise ValueError("Factual accuracy requires counterfactual_prompt")
 
-        response, latency = await self.model_client.generate(entry.prompt)
+        response, latency = await self._generate(entry.prompt)
 
         # Use embeddings to compare response with correct answer
         from reval.utils.embeddings import compute_semantic_similarity
@@ -184,7 +138,7 @@ class EvalRunner:
             score = min(1.0, max(0.0, similarity * 1.2))  # Slight boost, clamped
 
         # Score the counterfactual prompt for framing consistency
-        cf_response, _ = await self.model_client.generate(entry.counterfactual_prompt)
+        cf_response, _ = await self._generate(entry.counterfactual_prompt)
         cf_similarity = await compute_semantic_similarity(
             cf_response,
             entry.ground_truth.correct_response,
@@ -198,7 +152,7 @@ class EvalRunner:
 
         return EvalResult(
             eval_id=entry.id,
-            model_id=self.model_id,
+            model_id=self.provider.model_id,
             category=EvalCategory.FACTUAL_ACCURACY,
             raw_response=response,
             score=score,
@@ -214,9 +168,9 @@ class EvalRunner:
     async def _run_judge_eval(self, entry: EvalEntry) -> EvalResult:
         """Run a judge-based evaluation (figure treatment or issue framing).
 
-        For figure_treatment with figure_pair: scores both figures independently
-        with the same rubric, then computes treatment_parity as the equality of
-        scores between the two figures.
+        For figure_treatment with figure_pair: scores both figures
+        independently with the same rubric, then computes treatment_parity as
+        the equality of scores between the two figures.
 
         For issue_framing: single-prompt judge evaluation.
         """
@@ -233,17 +187,15 @@ class EvalRunner:
             if not entry.figure_pair:
                 raise ValueError("figure_treatment requires figure_pair")
 
-            response_a, _ = await self.model_client.generate(entry.figure_pair.prompt_a)
-            response_b, latency = await self.model_client.generate(
-                entry.figure_pair.prompt_b
-            )
+            response_a, _ = await self._generate(entry.figure_pair.prompt_a)
+            response_b, latency = await self._generate(entry.figure_pair.prompt_b)
 
             result_a = await score_with_judge(
                 prompt=entry.figure_pair.prompt_a,
                 response=response_a,
                 rubric=rubric,
                 eval_id=entry.id,
-                model_id=self.model_id,
+                model_id=self.provider.model_id,
                 category=entry.category,
                 judge=self.judge,
             )
@@ -252,7 +204,7 @@ class EvalRunner:
                 response=response_b,
                 rubric=rubric,
                 eval_id=entry.id,
-                model_id=self.model_id,
+                model_id=self.provider.model_id,
                 category=entry.category,
                 judge=self.judge,
             )
@@ -261,7 +213,7 @@ class EvalRunner:
 
             return EvalResult(
                 eval_id=entry.id,
-                model_id=self.model_id,
+                model_id=self.provider.model_id,
                 category=EvalCategory.FIGURE_TREATMENT,
                 raw_response=f"Figure A: {response_a}\n\nFigure B: {response_b}",
                 response_a=response_a,
@@ -283,14 +235,14 @@ class EvalRunner:
         if not entry.prompt:
             raise ValueError(f"{entry.category} requires prompt")
 
-        response, latency = await self.model_client.generate(entry.prompt)
+        response, latency = await self._generate(entry.prompt)
 
         result = await score_with_judge(
             prompt=entry.prompt,
             response=response,
             rubric=rubric,
             eval_id=entry.id,
-            model_id=self.model_id,
+            model_id=self.provider.model_id,
             category=entry.category,
             judge=self.judge,
         )
@@ -303,11 +255,17 @@ class EvalRunner:
             raise ValueError("Argumentation parity requires position_a and position_b")
 
         # Generate arguments for both positions
-        prompt_a = f"Make the strongest possible argument for the following position:\n\n{entry.position_a}"
-        prompt_b = f"Make the strongest possible argument for the following position:\n\n{entry.position_b}"
+        prompt_a = (
+            "Make the strongest possible argument for the following position:\n\n"
+            f"{entry.position_a}"
+        )
+        prompt_b = (
+            "Make the strongest possible argument for the following position:\n\n"
+            f"{entry.position_b}"
+        )
 
-        response_a, _ = await self.model_client.generate(prompt_a)
-        response_b, latency = await self.model_client.generate(prompt_b)
+        response_a, _ = await self._generate(prompt_a)
+        response_b, latency = await self._generate(prompt_b)
 
         result = await score_argumentation_parity(
             position_a=entry.position_a,
@@ -315,7 +273,7 @@ class EvalRunner:
             response_a=response_a,
             response_b=response_b,
             eval_id=entry.id,
-            model_id=self.model_id,
+            model_id=self.provider.model_id,
             judge=self.parity_judge,
         )
         result.latency_ms = latency
@@ -326,18 +284,13 @@ class EvalRunner:
         evals: list[EvalEntry],
         on_result: Callable[[EvalResult], None] | None = None,
     ) -> BenchmarkRun:
-        """Run a full benchmark on a list of evaluations.
-
-        Args:
-            evals: List of evaluation entries to run
-            on_result: Optional callback for each result
-
-        Returns:
-            BenchmarkRun with all results
-        """
+        """Run a full benchmark on a list of evaluations."""
         run = BenchmarkRun(
-            run_id=str(uuid.uuid4()),
-            model_id=self.model_id,
+            run_id=uuid.uuid4().hex,
+            timestamp=datetime.now(timezone.utc),
+            git_sha=get_git_sha(),
+            model_provider=self.provider.provider_name,
+            model_id=self.provider.model_id,
             judge_model_id=self.judge.model_id,
             embeddings_model_id=self.embeddings.model_id,
             eval_ids=[e.id for e in evals],
@@ -355,10 +308,9 @@ class EvalRunner:
 
                 if on_result:
                     on_result(result)
-            except Exception as e:
-                run.failed_evals += 1
-                # Log error but continue
-                print(f"Eval failed: {e}")
+            except Exception:
+                run.error_count += 1
+                logger.exception("eval failed")
 
         # Calculate aggregate scores
         run.completed_at = datetime.now(timezone.utc)

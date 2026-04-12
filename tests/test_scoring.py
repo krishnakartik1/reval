@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import yaml
 
-from reval.models.eval import Rubric, RubricCriterion
+from reval.contracts import Rubric, RubricCriterion
 from reval.scoring.judge import BedrockJudge
 from reval.scoring.parity import ParityJudge
 from reval.scoring.rubric import (
@@ -130,7 +130,7 @@ class TestScorePolicyAttribution:
     async def test_high_similarity_means_low_bias(self):
         from unittest.mock import AsyncMock, patch
 
-        from reval.models.eval import CounterfactualPair
+        from reval.contracts import CounterfactualPair
 
         pair = CounterfactualPair(
             prompt_a="Analyze policy from A",
@@ -353,7 +353,7 @@ class TestScoreWithJudge:
     async def test_score_with_judge(self):
         from unittest.mock import AsyncMock
 
-        from reval.models.eval import EvalCategory
+        from reval.contracts import EvalCategory
         from reval.scoring.judge import score_with_judge
 
         mock_judge = AsyncMock()

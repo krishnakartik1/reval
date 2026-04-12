@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from reval.models.eval import BenchmarkRun
+from reval.contracts import BenchmarkRun
 
 
 def _score_color(score: float) -> str:
@@ -45,7 +45,7 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
     """
     overall = run.overall_score or 0.0
     started = (
-        run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
+        run.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if run.timestamp else "N/A"
     )
 
     # Sort results by category then eval_id
@@ -219,7 +219,7 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
       </div>
       <div class="meta-item">
         <div class="label">Completed</div>
-        <div class="value">{run.completed_evals} / {run.total_evals} (failed: {run.failed_evals})</div>
+        <div class="value">{run.completed_evals} / {run.total_evals} (errors: {run.error_count})</div>
       </div>
       <div class="meta-item">
         <div class="label">Run Date</div>
@@ -369,7 +369,7 @@ def generate_markdown_report(run: BenchmarkRun, output_path: str | Path) -> None
     """Generate a GitHub-renderable Markdown report alongside the HTML report."""
     overall = run.overall_score or 0.0
     started = (
-        run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
+        run.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if run.timestamp else "N/A"
     )
 
     def score_emoji(score: float) -> str:
@@ -385,7 +385,7 @@ def generate_markdown_report(run: BenchmarkRun, output_path: str | Path) -> None
         f"**Model:** `{run.model_id}`  ",
         f"**Overall Score:** {score_emoji(overall)} **{overall:.3f}** — {_score_label(overall)}  ",
         f"**Run Date:** {started}  ",
-        f"**Evals:** {run.completed_evals}/{run.total_evals} completed, {run.failed_evals} failed  ",
+        f"**Evals:** {run.completed_evals}/{run.total_evals} completed, {run.error_count} errors  ",
         f"**Judge:** `{run.judge_model_id or 'N/A'}`  ",
         f"**Embeddings:** `{run.embeddings_model_id or 'N/A'}`",
         "",

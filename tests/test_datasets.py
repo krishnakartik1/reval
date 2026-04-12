@@ -6,7 +6,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from reval.models.eval import EvalCategory
+from reval.contracts import EvalCategory
 from reval.runner import load_evals_from_directory, load_evals_from_jsonl
 
 EVALS_DIR = Path(__file__).parent.parent / "evals"

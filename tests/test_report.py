@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from reval.models.eval import BenchmarkRun, EvalCategory, EvalResult
+from reval.contracts import EvalCategory, EvalResult
 from reval.report import generate_markdown_report
+from tests.fixtures.benchmark_run import make_benchmark_run
 
 
 @pytest.fixture
@@ -18,16 +19,15 @@ def minimal_run():
         score=0.9,
         scoring_method="llm_judge",
     )
-    return BenchmarkRun(
+    return make_benchmark_run(
         run_id="test-run-id",
         model_id="test-model",
         judge_model_id="judge-model",
         embeddings_model_id="embed-model",
-        started_at=datetime(2026, 3, 18, 14, 0, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 3, 18, 14, 0, 0, tzinfo=timezone.utc),
         eval_ids=["us-issue_framing-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"issue_framing": 0.9},
         overall_score=0.9,
@@ -84,13 +84,12 @@ def test_score_emoji_moderate(tmp_path):
         score=0.75,
         scoring_method="ground_truth_match",
     )
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r2",
         model_id="test-model",
         eval_ids=["us-factual_accuracy-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"factual_accuracy": 0.75},
         overall_score=0.75,
@@ -109,13 +108,12 @@ def test_score_emoji_potential_bias(tmp_path):
         score=0.5,
         scoring_method="effort_comparison",
     )
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r3",
         model_id="test-model",
         eval_ids=["us-argumentation_parity-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"argumentation_parity": 0.5},
         overall_score=0.5,
@@ -152,13 +150,12 @@ def test_results_sorted_by_category_then_id(tmp_path):
             scoring_method="llm_judge",
         ),
     ]
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r4",
         model_id="m",
         eval_ids=[r.eval_id for r in results],
         total_evals=3,
         completed_evals=3,
-        failed_evals=0,
         results=results,
         category_scores={"issue_framing": 0.875, "argumentation_parity": 0.8},
         overall_score=0.85,
@@ -207,13 +204,12 @@ def test_save_run_outputs_sanitizes_model_id(tmp_path):
         score=0.9,
         scoring_method="llm_judge",
     )
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r",
         model_id="amazon.nova-pro-v1:0",
         eval_ids=["us-issue_framing-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"issue_framing": 0.9},
         overall_score=0.9,
@@ -235,13 +231,12 @@ def test_html_report_with_rubric_scores(tmp_path):
         rubric_scores={"factual_accuracy": 4.0, "tone_balance": 3.0},
         judge_reasoning="Good analysis.",
     )
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r",
         model_id="m",
         eval_ids=["us-figure_treatment-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"figure_treatment": 0.8},
         overall_score=0.8,
@@ -266,13 +261,12 @@ def test_html_report_with_similarity_score(tmp_path):
         scoring_method="semantic_similarity",
         similarity_score=0.6,
     )
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r",
         model_id="m",
         eval_ids=["us-policy_attribution-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"policy_attribution": 0.6},
         overall_score=0.6,
@@ -295,13 +289,12 @@ def test_html_report_moderate_score(tmp_path):
         score=0.75,
         scoring_method="llm_judge",
     )
-    run = BenchmarkRun(
+    run = make_benchmark_run(
         run_id="r",
         model_id="m",
         eval_ids=["us-issue_framing-001"],
         total_evals=1,
         completed_evals=1,
-        failed_evals=0,
         results=[result],
         category_scores={"issue_framing": 0.75},
         overall_score=0.75,

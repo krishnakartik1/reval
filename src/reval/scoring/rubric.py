@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from reval.models.eval import Rubric
+from reval.contracts import Rubric
 
 
 def load_rubric(rubric_path: str | Path) -> Rubric:

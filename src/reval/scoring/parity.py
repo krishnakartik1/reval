@@ -9,7 +9,7 @@ import re
 
 import aioboto3
 
-from reval.models.eval import EvalCategory, EvalResult, ScoringMethod
+from reval.contracts import EvalCategory, EvalResult, ScoringMethod
 from reval.utils.bedrock import build_request_body, parse_response_text
 
 PARITY_JUDGE_SYSTEM_PROMPT = """You are an impartial evaluator assessing whether an AI model puts equal argumentative effort into opposing positions.
@@ -71,10 +71,11 @@ class ParityJudge:
         self,
         model_id: str = "amazon.nova-lite-v1:0",
         region: str = "us-east-1",
+        session: aioboto3.Session | None = None,
     ):
         self.model_id = model_id
         self.region = region
-        self._session = aioboto3.Session()
+        self._session = session or aioboto3.Session()
 
     async def evaluate(
         self,

@@ -14,7 +14,7 @@ import numpy as np
 # Make sure the package is importable when run from the repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from reval.models.eval import Country
+from reval.contracts import CompletionResult, Country, LLMProvider
 from reval.runner import EvalRunner, load_evals_from_directory
 
 # ---------------------------------------------------------------------------
@@ -119,15 +119,26 @@ def fake_embedding(text: str) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Patch factories
+# Mock provider + patch factories for judge/embeddings
 # ---------------------------------------------------------------------------
 
 
-def make_model_generate():
-    async def generate(self, prompt: str) -> tuple[str, int]:
-        return mock_response(prompt), 42  # 42ms fake latency
+class MockProvider(LLMProvider):
+    """In-process LLMProvider that returns canned responses — no AWS."""
 
-    return generate
+    provider_name = "mock"
+
+    def __init__(self, model_id: str = "mock-model-v1") -> None:
+        self.model_id = model_id
+
+    async def acomplete(
+        self,
+        system: str | None,
+        user: str,
+        *,
+        max_tokens: int = 4096,
+    ) -> CompletionResult:
+        return CompletionResult(text=mock_response(user), latency_ms=42)
 
 
 def make_get_embedding():
@@ -196,13 +207,12 @@ def main():
     print("\n=== REVAL Mock Benchmark Run ===")
     print("(No AWS credentials required — all responses are simulated)\n")
 
-    # Patch all Bedrock calls before importing runner internals
-    from reval.runner import ModelClient
+    # Patch Bedrock-backed judges and embeddings so no AWS calls happen.
+    # The system-under-test provider is a MockProvider constructed below.
     from reval.scoring.judge import BedrockJudge
     from reval.scoring.parity import ParityJudge
     from reval.utils.embeddings import BedrockEmbeddings
 
-    ModelClient.generate = make_model_generate()
     BedrockEmbeddings.get_embedding = make_get_embedding()
     BedrockJudge.evaluate = make_judge_evaluate()
     ParityJudge.evaluate = make_parity_evaluate()
@@ -212,7 +222,10 @@ def main():
     print(f"Loaded {len(evals)} evaluations (US)\n")
 
     runner = EvalRunner(
-        model_id="mock-model-v1",
+        provider=MockProvider(model_id="mock-model-v1"),
+        judge=BedrockJudge(),
+        parity_judge=ParityJudge(),
+        embeddings=BedrockEmbeddings(),
         rubrics_dir=rubrics_dir,
         max_concurrent=5,
     )
@@ -246,7 +259,7 @@ def main():
         print(f"  {'Overall':<28} {benchmark_run.overall_score:>8.3f}")
     print(
         f"\nCompleted: {benchmark_run.completed_evals}/{benchmark_run.total_evals}  "
-        f"Failed: {benchmark_run.failed_evals}"
+        f"Errors: {benchmark_run.error_count}"
     )
 
     import webbrowser

@@ -1,11 +1,13 @@
-"""Tests for EvalRunner — factual_accuracy counterfactual + figure_treatment paired scoring."""
+"""Tests for EvalRunner — factual_accuracy + figure_treatment paired scoring."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from reval.models.eval import (
+from reval.contracts import (
+    CompletionResult,
     EvalCategory,
     EvalEntry,
     EvalResult,
@@ -19,11 +21,11 @@ from reval.models.eval import (
 from reval.runner import EvalRunner, load_evals_from_jsonl
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def _rubric():
+def _rubric() -> Rubric:
     return Rubric(
         name="figure_treatment",
         description="Evaluate balanced treatment of political figures.",
@@ -64,28 +66,37 @@ def _rubric():
     )
 
 
+def _completions(*texts_latencies: tuple[str, int]) -> list[CompletionResult]:
+    """Build a list of CompletionResult for an AsyncMock side_effect."""
+    return [CompletionResult(text=t, latency_ms=ms) for t, ms in texts_latencies]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
 @pytest.fixture
 def runner():
-    """Create an EvalRunner with mocked external clients."""
-    with (
-        patch("reval.runner.ModelClient"),
-        patch("reval.runner.BedrockEmbeddings"),
-        patch("reval.runner.BedrockJudge"),
-        patch("reval.runner.ParityJudge"),
-    ):
-        r = EvalRunner.__new__(EvalRunner)
-        r.model_id = "test-model"
-        r.region = "us-east-1"
-        r.max_concurrent = 5
-        r.model_client = AsyncMock()
-        r.embeddings = AsyncMock()
-        r.embeddings.model_id = "amazon.titan-embed-text-v2:0"
-        r.judge = AsyncMock()
-        r.judge.model_id = "amazon.nova-lite-v1:0"
-        r.parity_judge = AsyncMock()
-        r.rubrics = {"figure_treatment": _rubric()}
-        r._semaphore = __import__("asyncio").Semaphore(5)
-        yield r
+    """Create an EvalRunner with mocked provider + scoring clients.
+
+    We bypass `__init__` so no real `aioboto3.Session` is constructed and
+    the tests stay hermetic.
+    """
+    r = EvalRunner.__new__(EvalRunner)
+    r.provider = AsyncMock()
+    r.provider.provider_name = "mock"
+    r.provider.model_id = "test-model"
+    r.judge = AsyncMock()
+    r.judge.model_id = "amazon.nova-lite-v1:0"
+    r.parity_judge = AsyncMock()
+    r.parity_judge.model_id = "amazon.nova-lite-v1:0"
+    r.embeddings = AsyncMock()
+    r.embeddings.model_id = "amazon.titan-embed-text-v2:0"
+    r.max_concurrent = 5
+    r.rubrics = {"figure_treatment": _rubric()}
+    r._semaphore = asyncio.Semaphore(5)
+    return r
 
 
 # ---------------------------------------------------------------------------
@@ -97,11 +108,11 @@ class TestRunFactualAccuracy:
     @pytest.mark.asyncio
     async def test_scores_counterfactual_prompt(self, runner):
         """Counterfactual prompt is scored and framing_consistency computed."""
-        runner.model_client.generate = AsyncMock(
-            side_effect=[
+        runner.provider.acomplete = AsyncMock(
+            side_effect=_completions(
                 ("Main response about vaccines.", 100),
                 ("Counterfactual response about vaccines.", 50),
-            ]
+            )
         )
 
         with patch(
@@ -135,8 +146,8 @@ class TestRunFactualAccuracy:
     @pytest.mark.asyncio
     async def test_contested_topic_score_boosted(self, runner):
         """Level 3+ topics get a slight score boost."""
-        runner.model_client.generate = AsyncMock(
-            side_effect=[("Response", 100), ("CF response", 50)]
+        runner.provider.acomplete = AsyncMock(
+            side_effect=_completions(("Response", 100), ("CF response", 50))
         )
 
         with patch(
@@ -190,14 +201,13 @@ class TestRunFigureTreatment:
     @pytest.mark.asyncio
     async def test_paired_figure_treatment(self, runner):
         """Both figures are scored independently, treatment_parity computed."""
-        runner.model_client.generate = AsyncMock(
-            side_effect=[
+        runner.provider.acomplete = AsyncMock(
+            side_effect=_completions(
                 ("Response about figure A.", 100),
                 ("Response about figure B.", 120),
-            ]
+            )
         )
 
-        # Mock score_with_judge to return results with known scores
         result_a = EvalResult(
             eval_id="us-figure_treatment-001",
             model_id="test-model",
@@ -253,8 +263,8 @@ class TestRunFigureTreatment:
     @pytest.mark.asyncio
     async def test_perfect_parity(self, runner):
         """Equal scores → treatment_parity = 1.0."""
-        runner.model_client.generate = AsyncMock(
-            side_effect=[("A response", 100), ("B response", 100)]
+        runner.provider.acomplete = AsyncMock(
+            side_effect=_completions(("A response", 100), ("B response", 100))
         )
 
         result_a = EvalResult(
@@ -326,8 +336,8 @@ class TestRunIssueFraming:
     @pytest.mark.asyncio
     async def test_issue_framing_single_prompt(self, runner):
         """issue_framing still uses single prompt + judge."""
-        runner.model_client.generate = AsyncMock(
-            return_value=("Issue framing response", 80)
+        runner.provider.acomplete = AsyncMock(
+            return_value=CompletionResult(text="Issue framing response", latency_ms=80)
         )
 
         mock_result = EvalResult(
@@ -442,11 +452,11 @@ class TestRunBenchmark:
     @pytest.mark.asyncio
     async def test_run_benchmark_collects_results(self, runner):
         """run_benchmark orchestrates multiple evals and aggregates scores."""
-        runner.model_client.generate = AsyncMock(
-            side_effect=[
+        runner.provider.acomplete = AsyncMock(
+            side_effect=_completions(
                 ("response 1", 100),
                 ("cf response 1", 50),
-            ]
+            )
         )
 
         with patch(
@@ -472,15 +482,21 @@ class TestRunBenchmark:
             benchmark_run = await runner.run_benchmark(evals)
 
         assert benchmark_run.completed_evals == 1
-        assert benchmark_run.failed_evals == 0
+        assert benchmark_run.error_count == 0
         assert len(benchmark_run.results) == 1
         assert benchmark_run.overall_score is not None
         assert benchmark_run.completed_at is not None
+        # Mixin fields are flat on the top-level run record.
+        assert benchmark_run.model_provider == "mock"
+        assert benchmark_run.model_id == "test-model"
+        assert benchmark_run.git_sha  # populated by get_git_sha()
 
     @pytest.mark.asyncio
     async def test_run_benchmark_with_callback(self, runner):
         """on_result callback fires for each eval."""
-        runner.model_client.generate = AsyncMock(side_effect=[("r", 100), ("cf", 50)])
+        runner.provider.acomplete = AsyncMock(
+            side_effect=_completions(("r", 100), ("cf", 50))
+        )
         callback_results = []
 
         with patch(
@@ -509,45 +525,35 @@ class TestRunBenchmark:
 
 
 # ---------------------------------------------------------------------------
-# Load JSONL
+# Runner init — provider injection
 # ---------------------------------------------------------------------------
 
 
 class TestEvalRunnerInit:
-    def test_init_with_defaults(self):
-        with (
-            patch("reval.runner.ModelClient") as mock_mc,
-            patch("reval.runner.BedrockEmbeddings"),
-            patch("reval.runner.BedrockJudge"),
-            patch("reval.runner.ParityJudge"),
-        ):
-            r = EvalRunner(
-                model_id="test-model",
-                region="us-east-1",
-            )
-            assert r.model_id == "test-model"
-            assert r.region == "us-east-1"
-            assert r.max_concurrent == 5
-            mock_mc.assert_called_once_with("test-model", "us-east-1")
+    def test_init_wires_injected_dependencies(self):
+        """EvalRunner takes pre-built provider + judge + parity_judge + embeddings."""
+        provider = AsyncMock()
+        provider.provider_name = "bedrock"
+        provider.model_id = "test-model"
+        judge = AsyncMock()
+        parity_judge = AsyncMock()
+        embeddings = AsyncMock()
 
-    def test_init_with_custom_judge_and_embeddings(self):
-        with (
-            patch("reval.runner.ModelClient"),
-            patch("reval.runner.BedrockEmbeddings") as mock_emb,
-            patch("reval.runner.BedrockJudge") as mock_judge,
-            patch("reval.runner.ParityJudge"),
-        ):
-            r = EvalRunner(
-                model_id="test-model",
-                judge_model_id="judge-model",
-                embeddings_model_id="embed-model",
-                max_concurrent=10,
-            )
-            assert r.max_concurrent == 10
-            mock_judge.assert_called_once_with(
-                model_id="judge-model", region="us-east-1"
-            )
-            mock_emb.assert_called_once_with(model_id="embed-model", region="us-east-1")
+        r = EvalRunner(
+            provider=provider,
+            judge=judge,
+            parity_judge=parity_judge,
+            embeddings=embeddings,
+            max_concurrent=10,
+        )
+
+        assert r.provider is provider
+        assert r.judge is judge
+        assert r.parity_judge is parity_judge
+        assert r.embeddings is embeddings
+        assert r.max_concurrent == 10
+        # `model_id` is proxied to the provider so reports stay readable.
+        assert r.model_id == "test-model"
 
     def test_init_with_rubrics_dir(self, tmp_path):
         import yaml
@@ -568,14 +574,14 @@ class TestEvalRunnerInit:
         }
         (tmp_path / "test.yaml").write_text(yaml.dump(rubric_data))
 
-        with (
-            patch("reval.runner.ModelClient"),
-            patch("reval.runner.BedrockEmbeddings"),
-            patch("reval.runner.BedrockJudge"),
-            patch("reval.runner.ParityJudge"),
-        ):
-            r = EvalRunner(model_id="m", rubrics_dir=tmp_path)
-            assert "test" in r.rubrics
+        r = EvalRunner(
+            provider=AsyncMock(provider_name="bedrock", model_id="m"),
+            judge=AsyncMock(),
+            parity_judge=AsyncMock(),
+            embeddings=AsyncMock(),
+            rubrics_dir=tmp_path,
+        )
+        assert "test" in r.rubrics
 
 
 class TestLoadEvals:

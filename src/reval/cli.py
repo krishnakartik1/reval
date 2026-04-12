@@ -1,5 +1,7 @@
 """CLI interface for REVAL benchmark."""
 
+from __future__ import annotations
+
 import asyncio
 from pathlib import Path
 
@@ -8,10 +10,21 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-from reval.models.eval import Country, EvalCategory
+from reval.contracts import Country, EvalCategory
+from reval.providers.factory import provider_from_config
 from reval.runner import EvalRunner, load_evals_from_directory
 
 load_dotenv()
+
+# Anchor default paths to the repo root (three levels up from this file:
+# src/reval/cli.py → src/reval → src → repo root). Works for editable
+# installs. Wheel installs will need importlib.resources once reval ships
+# package data.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_DATASET = _REPO_ROOT / "evals" / "datasets"
+_DEFAULT_SCHEMA = _REPO_ROOT / "evals" / "schema.json"
+_DEFAULT_RUBRICS = _REPO_ROOT / "evals" / "rubrics"
+_DEFAULT_CONFIG = _REPO_ROOT / "evals" / "config.yaml"
 
 app = typer.Typer(
     name="reval",
@@ -23,13 +36,13 @@ console = Console()
 @app.command()
 def validate(
     dataset: Path = typer.Option(
-        Path("evals/datasets"),
+        _DEFAULT_DATASET,
         "--dataset",
         "-d",
         help="Path to dataset directory",
     ),
     schema: Path = typer.Option(
-        Path("evals/schema.json"),
+        _DEFAULT_SCHEMA,
         "--schema",
         "-s",
         help="Path to JSON schema",
@@ -40,7 +53,7 @@ def validate(
         "-v",
         help="Show all results, not just errors",
     ),
-):
+) -> None:
     """Validate dataset entries against the JSON schema."""
     from reval.validate import validate_dataset
 
@@ -65,13 +78,13 @@ def run(
         help="Model ID to evaluate (e.g., anthropic.claude-3-sonnet-20240229-v1:0)",
     ),
     dataset: Path = typer.Option(
-        Path("evals/datasets"),
+        _DEFAULT_DATASET,
         "--dataset",
         "-d",
         help="Path to dataset directory",
     ),
     rubrics: Path = typer.Option(
-        Path("evals/rubrics"),
+        _DEFAULT_RUBRICS,
         "--rubrics",
         "-r",
         help="Path to rubrics directory",
@@ -114,13 +127,16 @@ def run(
         help="Model ID for embeddings (default: from config.yaml)",
     ),
     config_path: Path = typer.Option(
-        Path("evals/config.yaml"),
+        _DEFAULT_CONFIG,
         "--config",
         help="Path to config file",
     ),
-):
+) -> None:
     """Run the benchmark on a model."""
     from reval.config import load_config, resolve_model_id
+    from reval.scoring.judge import BedrockJudge
+    from reval.scoring.parity import ParityJudge
+    from reval.utils.embeddings import BedrockEmbeddings
 
     config = load_config(config_path)
     model = resolve_model_id(model, config)
@@ -141,14 +157,21 @@ def run(
 
     console.print(f"Found [green]{len(evals)}[/green] evaluations to run.\n")
 
-    # Create runner
+    # Build the provider + scoring clients. Phase 3 will read `provider:`
+    # from the YAML entry via resolve_model_provider; Phase 1 hardcodes
+    # Bedrock since that is still the only implementation.
+    provider = provider_from_config("bedrock", model_id=model, region=region)
+    judge = BedrockJudge(model_id=judge_model_id, region=region)
+    parity_judge = ParityJudge(model_id=judge_model_id, region=region)
+    embeddings = BedrockEmbeddings(model_id=embeddings_model_id, region=region)
+
     runner = EvalRunner(
-        model_id=model,
+        provider=provider,
+        judge=judge,
+        parity_judge=parity_judge,
+        embeddings=embeddings,
         rubrics_dir=rubrics if rubrics.exists() else None,
-        region=region,
         max_concurrent=max_concurrent,
-        judge_model_id=judge_model_id,
-        embeddings_model_id=embeddings_model_id,
     )
 
     # Run benchmark with progress
@@ -193,7 +216,7 @@ def run(
     console.print(
         f"Completed: {benchmark_run.completed_evals}/{benchmark_run.total_evals}"
     )
-    console.print(f"Failed: {benchmark_run.failed_evals}")
+    console.print(f"Errors: {benchmark_run.error_count}")
 
     # Save results and generate reports
     import webbrowser
@@ -208,7 +231,7 @@ def run(
 
 
 @app.command()
-def info():
+def info() -> None:
     """Show information about REVAL."""
     from reval import __version__
 
@@ -233,7 +256,7 @@ def info():
 @app.command()
 def list_evals(
     dataset: Path = typer.Option(
-        Path("evals/datasets"),
+        _DEFAULT_DATASET,
         "--dataset",
         "-d",
         help="Path to dataset directory",
@@ -249,7 +272,7 @@ def list_evals(
         "--category",
         help="Filter by category",
     ),
-):
+) -> None:
     """List available evaluations."""
     country_filter = Country(country) if country else None
     category_filter = EvalCategory(category) if category else None
