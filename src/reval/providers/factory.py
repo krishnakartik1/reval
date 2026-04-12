@@ -8,10 +8,16 @@ from __future__ import annotations
 from typing import Any
 
 from reval.contracts.provider import LLMProvider
+from reval.providers.anthropic_direct import AnthropicProvider
 from reval.providers.bedrock import BedrockProvider
+from reval.providers.minimax import MinimaxProvider
+from reval.providers.openai_compat import OpenAIProvider
 
 _REGISTRY: dict[str, type[LLMProvider]] = {
     "bedrock": BedrockProvider,
+    "anthropic": AnthropicProvider,
+    "minimax": MinimaxProvider,
+    "openai": OpenAIProvider,
 }
 
 

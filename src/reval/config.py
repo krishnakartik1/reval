@@ -51,7 +51,7 @@ def load_config(path: str | Path | None = None) -> RevalConfig:
 
 
 def resolve_model_id(name: str, config: RevalConfig) -> str:
-    """Resolve a model short name to a full Bedrock model ID.
+    """Resolve a model short name to a full provider model ID.
 
     If ``name`` matches a key in the config's models catalog, returns
     the corresponding ``model_id``. Otherwise returns ``name`` unchanged.
@@ -61,8 +61,35 @@ def resolve_model_id(name: str, config: RevalConfig) -> str:
         config: Loaded config with models catalog.
 
     Returns:
-        Full Bedrock model ID.
+        Full provider-specific model ID.
     """
     if name in config.models:
         return config.models[name]["model_id"]
     return name
+
+
+def resolve_model_provider(name: str, config: RevalConfig) -> str:
+    """Resolve a model short name to its `provider` (API surface) string.
+
+    `provider` in the YAML entry identifies the API surface, not the
+    model vendor — `"bedrock"` / `"anthropic"` / `"openai"` /
+    `"minimax"`. The same vendor model can appear under multiple
+    surfaces (`claude-sonnet-4-bedrock` vs `claude-sonnet-4-direct`),
+    and `provider` is what disambiguates.
+
+    If ``name`` is not in the catalog, falls back to ``"bedrock"``:
+    callers that pass a full Bedrock ARN on the command line still get
+    routed through `BedrockProvider`.
+    """
+    if name in config.models:
+        return config.models[name].get("provider", "bedrock")
+    return "bedrock"
+
+
+def resolve_model(name: str, config: RevalConfig) -> tuple[str, str]:
+    """One-shot helper returning `(provider, model_id)`.
+
+    Convenience wrapper around `resolve_model_provider` +
+    `resolve_model_id` for CLI code that needs both values.
+    """
+    return resolve_model_provider(name, config), resolve_model_id(name, config)
