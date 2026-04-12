@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from reval.models.eval import Rubric, RubricCriterion
+from reval.models.eval import Rubric
 
 
 def load_rubric(rubric_path: str | Path) -> Rubric:
@@ -99,16 +99,18 @@ def format_rubric_for_judge(rubric: Rubric) -> str:
     ]
 
     for i, criterion in enumerate(rubric.criteria, 1):
-        lines.extend([
-            f"### {i}. {criterion.name} (weight: {criterion.weight})",
-            "",
-            criterion.description,
-            "",
-            "Scoring:",
-            f"- 1 (Poor): {criterion.score_1}",
-            f"- 3 (Acceptable): {criterion.score_3}",
-            f"- 5 (Excellent): {criterion.score_5}",
-            "",
-        ])
+        lines.extend(
+            [
+                f"### {i}. {criterion.name} (weight: {criterion.weight})",
+                "",
+                criterion.description,
+                "",
+                "Scoring:",
+                f"- 1 (Poor): {criterion.score_1}",
+                f"- 3 (Acceptable): {criterion.score_3}",
+                f"- 5 (Excellent): {criterion.score_5}",
+                "",
+            ]
+        )
 
     return "\n".join(lines)

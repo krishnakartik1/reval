@@ -7,11 +7,12 @@ __version__ = "0.1.0"
 
 from reval.models.eval import (
     BenchmarkRun,
-    Country,
     CounterfactualPair,
+    Country,
     EvalCategory,
     EvalEntry,
     EvalResult,
+    FigurePair,
     GroundTruth,
     GroundTruthLevel,
     Rubric,
@@ -27,6 +28,7 @@ __all__ = [
     "EvalCategory",
     "EvalEntry",
     "EvalResult",
+    "FigurePair",
     "GroundTruth",
     "GroundTruthLevel",
     "Rubric",

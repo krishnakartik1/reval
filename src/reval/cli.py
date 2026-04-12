@@ -1,13 +1,10 @@
 """CLI interface for REVAL benchmark."""
 
 import asyncio
-import json
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from reval.models.eval import Country, EvalCategory
@@ -24,17 +21,20 @@ console = Console()
 def validate(
     dataset: Path = typer.Option(
         Path("evals/datasets"),
-        "--dataset", "-d",
+        "--dataset",
+        "-d",
         help="Path to dataset directory",
     ),
     schema: Path = typer.Option(
         Path("evals/schema.json"),
-        "--schema", "-s",
+        "--schema",
+        "-s",
         help="Path to JSON schema",
     ),
     verbose: bool = typer.Option(
         False,
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         help="Show all results, not just errors",
     ),
 ):
@@ -57,30 +57,35 @@ def validate(
 def run(
     model: str = typer.Option(
         ...,
-        "--model", "-m",
+        "--model",
+        "-m",
         help="Model ID to evaluate (e.g., anthropic.claude-3-sonnet-20240229-v1:0)",
     ),
     dataset: Path = typer.Option(
         Path("evals/datasets"),
-        "--dataset", "-d",
+        "--dataset",
+        "-d",
         help="Path to dataset directory",
     ),
     rubrics: Path = typer.Option(
         Path("evals/rubrics"),
-        "--rubrics", "-r",
+        "--rubrics",
+        "-r",
         help="Path to rubrics directory",
     ),
     output: Path = typer.Option(
         Path("results"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output directory for results",
     ),
-    country: Optional[str] = typer.Option(
+    country: str | None = typer.Option(
         None,
-        "--country", "-c",
+        "--country",
+        "-c",
         help="Filter by country (us, india, etc.)",
     ),
-    category: Optional[str] = typer.Option(
+    category: str | None = typer.Option(
         None,
         "--category",
         help="Filter by category (policy_attribution, figure_treatment, etc.)",
@@ -95,12 +100,12 @@ def run(
         "--max-concurrent",
         help="Maximum concurrent API calls",
     ),
-    judge_model: Optional[str] = typer.Option(
+    judge_model: str | None = typer.Option(
         None,
         "--judge-model",
         help="Model ID for LLM judge (default: from config.yaml)",
     ),
-    embeddings_model: Optional[str] = typer.Option(
+    embeddings_model: str | None = typer.Option(
         None,
         "--embeddings-model",
         help="Model ID for embeddings (default: from config.yaml)",
@@ -149,9 +154,7 @@ def run(
     def on_result(result):
         results_count["completed"] += 1
         status = "[green]✓[/green]" if result.score >= 0.7 else "[yellow]○[/yellow]"
-        console.print(
-            f"  {status} {result.eval_id}: score={result.score:.3f}"
-        )
+        console.print(f"  {status} {result.eval_id}: score={result.score:.3f}")
 
     console.print(f"[cyan]Running benchmark on {model}...[/cyan]\n")
 
@@ -179,13 +182,20 @@ def run(
         console.print(table)
 
     # Summary
-    console.print(f"\n[bold]Overall Score:[/bold] {benchmark_run.overall_score:.3f}" if benchmark_run.overall_score else "")
-    console.print(f"Completed: {benchmark_run.completed_evals}/{benchmark_run.total_evals}")
+    console.print(
+        f"\n[bold]Overall Score:[/bold] {benchmark_run.overall_score:.3f}"
+        if benchmark_run.overall_score
+        else ""
+    )
+    console.print(
+        f"Completed: {benchmark_run.completed_evals}/{benchmark_run.total_evals}"
+    )
     console.print(f"Failed: {benchmark_run.failed_evals}")
 
     # Save results and generate reports
-    from reval.report import save_run_outputs
     import webbrowser
+
+    from reval.report import save_run_outputs
 
     run_dir = save_run_outputs(benchmark_run, output)
     console.print(f"\n[green]Results saved to {run_dir}/[/green]")
@@ -221,15 +231,17 @@ def info():
 def list_evals(
     dataset: Path = typer.Option(
         Path("evals/datasets"),
-        "--dataset", "-d",
+        "--dataset",
+        "-d",
         help="Path to dataset directory",
     ),
-    country: Optional[str] = typer.Option(
+    country: str | None = typer.Option(
         None,
-        "--country", "-c",
+        "--country",
+        "-c",
         help="Filter by country",
     ),
-    category: Optional[str] = typer.Option(
+    category: str | None = typer.Option(
         None,
         "--category",
         help="Filter by category",

@@ -1,7 +1,5 @@
 """Tests for provider-aware Bedrock request/response helpers."""
 
-import pytest
-
 from reval.utils.bedrock import build_request_body, parse_response_text
 
 
@@ -36,9 +34,7 @@ class TestBuildRequestBody:
             system_prompt="Be helpful.",
             max_tokens=2048,
         )
-        assert body["messages"] == [
-            {"role": "user", "content": [{"text": "Hello"}]}
-        ]
+        assert body["messages"] == [{"role": "user", "content": [{"text": "Hello"}]}]
         assert body["system"] == [{"text": "Be helpful."}]
         assert body["inferenceConfig"] == {"maxTokens": 2048}
         assert "anthropic_version" not in body
@@ -105,11 +101,17 @@ class TestParseResponseText:
 
     def test_anthropic(self):
         body = {"content": [{"text": "response text"}]}
-        assert parse_response_text("anthropic.claude-3-haiku-v1:0", body) == "response text"
+        assert (
+            parse_response_text("anthropic.claude-3-haiku-v1:0", body)
+            == "response text"
+        )
 
     def test_anthropic_cross_region(self):
         body = {"content": [{"text": "response text"}]}
-        assert parse_response_text("us.anthropic.claude-3-5-haiku-v1:0", body) == "response text"
+        assert (
+            parse_response_text("us.anthropic.claude-3-5-haiku-v1:0", body)
+            == "response text"
+        )
 
     def test_nova(self):
         body = {"output": {"message": {"content": [{"text": "nova response"}]}}}
@@ -117,11 +119,17 @@ class TestParseResponseText:
 
     def test_meta(self):
         body = {"generation": "llama response"}
-        assert parse_response_text("meta.llama3-70b-instruct-v1:0", body) == "llama response"
+        assert (
+            parse_response_text("meta.llama3-70b-instruct-v1:0", body)
+            == "llama response"
+        )
 
     def test_titan(self):
         body = {"results": [{"outputText": "titan response"}]}
-        assert parse_response_text("amazon.titan-text-express-v1", body) == "titan response"
+        assert (
+            parse_response_text("amazon.titan-text-express-v1", body)
+            == "titan response"
+        )
 
     def test_unknown_fallback(self):
         body = {"content": [{"text": "fallback response"}]}

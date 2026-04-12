@@ -44,7 +44,9 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
         output_path: Path to write the HTML file.
     """
     overall = run.overall_score or 0.0
-    started = run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
+    started = (
+        run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
+    )
 
     # Sort results by category then eval_id
     sorted_results = sorted(
@@ -64,7 +66,11 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
     result_rows = []
     for r in sorted_results:
         cat = r.category.value if hasattr(r.category, "value") else str(r.category)
-        method = r.scoring_method.value if hasattr(r.scoring_method, "value") else str(r.scoring_method)
+        method = (
+            r.scoring_method.value
+            if hasattr(r.scoring_method, "value")
+            else str(r.scoring_method)
+        )
         color = _score_color(r.score)
         bg = _score_bg(r.score)
 
@@ -87,23 +93,23 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
                     f'<span class="rubric-name">{_esc(criterion)}</span>'
                     f'<div class="rubric-bar-bg">'
                     f'<div class="rubric-bar" style="width:{pct:.0f}%;background:{bar_color}"></div>'
-                    f'</div>'
+                    f"</div>"
                     f'<span class="rubric-val">{display}</span>'
-                    f'</div>'
+                    f"</div>"
                 )
-            rubric_html += '</div>'
+            rubric_html += "</div>"
             detail_parts.append(rubric_html)
 
         if r.judge_reasoning:
             detail_parts.append(
                 f'<div class="reasoning"><h4>Judge Reasoning</h4>'
-                f'<p>{_esc(r.judge_reasoning)}</p></div>'
+                f"<p>{_esc(r.judge_reasoning)}</p></div>"
             )
 
         if r.similarity_score is not None:
             detail_parts.append(
                 f'<div class="reasoning"><h4>Similarity Score</h4>'
-                f'<p>{r.similarity_score:.4f}</p></div>'
+                f"<p>{r.similarity_score:.4f}</p></div>"
             )
 
         if r.raw_response:
@@ -112,19 +118,23 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
                 truncated += "..."
             detail_parts.append(
                 f'<div class="raw-response"><h4>Raw Response</h4>'
-                f'<pre>{_esc(truncated)}</pre></div>'
+                f"<pre>{_esc(truncated)}</pre></div>"
             )
 
-        detail_html = "".join(detail_parts) if detail_parts else '<p class="no-detail">No additional details</p>'
+        detail_html = (
+            "".join(detail_parts)
+            if detail_parts
+            else '<p class="no-detail">No additional details</p>'
+        )
 
         result_rows.append(
             f'<tr class="result-row" onclick="toggleDetail(this)">'
             f'<td><span class="expand-icon">&#9654;</span> {_esc(r.eval_id)}</td>'
-            f'<td>{_esc(cat)}</td>'
+            f"<td>{_esc(cat)}</td>"
             f'<td><span class="score-badge" style="background:{bg};color:{color}">{r.score:.3f}</span></td>'
-            f'<td>{_esc(_score_label(r.score))}</td>'
-            f'<td>{_esc(method)}</td>'
-            f'</tr>'
+            f"<td>{_esc(_score_label(r.score))}</td>"
+            f"<td>{_esc(method)}</td>"
+            f"</tr>"
             f'<tr class="detail-row"><td colspan="5"><div class="detail-content">{detail_html}</div></td></tr>'
         )
 
@@ -325,75 +335,9 @@ def generate_html_report(run: BenchmarkRun, output_path: str | Path) -> None:
     Path(output_path).write_text(page)
 
 
-def generate_markdown_report(run: BenchmarkRun, output_path: str | Path) -> None:
-    """Generate a GitHub-renderable Markdown report.
-
-    Args:
-        run: Completed benchmark run with results.
-        output_path: Path to write the Markdown file.
-    """
-    overall = run.overall_score or 0.0
-    started = run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
-
-    def _emoji(score: float) -> str:
-        if score >= 0.85:
-            return "🟢"
-        if score >= 0.70:
-            return "🟡"
-        return "🔴"
-
-    lines = [
-        "# REVAL Benchmark Report",
-        "",
-        f"**Model:** `{run.model_id}`  ",
-        f"**Overall Score:** {_emoji(overall)} **{overall:.3f}** — {_score_label(overall)}  ",
-        f"**Run Date:** {started}  ",
-        f"**Evals:** {run.completed_evals}/{run.total_evals} completed, {run.failed_evals} failed  ",
-        f"**Judge:** `{run.judge_model_id or 'N/A'}`  ",
-        f"**Embeddings:** `{run.embeddings_model_id or 'N/A'}`",
-        "",
-        "---",
-        "",
-        "## Category Scores",
-        "",
-        "| Category | Score | Interpretation |",
-        "|----------|-------|----------------|",
-    ]
-
-    for cat, score in sorted(run.category_scores.items()):
-        lines.append(f"| {cat} | {_emoji(score)} {score:.3f} | {_score_label(score)} |")
-
-    sorted_results = sorted(
-        run.results,
-        key=lambda r: (
-            r.category.value if hasattr(r.category, "value") else str(r.category),
-            r.eval_id,
-        ),
-    )
-
-    lines += [
-        "",
-        "---",
-        "",
-        "## Individual Results",
-        "",
-        "| Eval ID | Category | Score | Interpretation | Method |",
-        "|---------|----------|-------|----------------|--------|",
-    ]
-
-    for r in sorted_results:
-        cat = r.category.value if hasattr(r.category, "value") else str(r.category)
-        method = r.scoring_method.value if hasattr(r.scoring_method, "value") else str(r.scoring_method)
-        lines.append(
-            f"| {r.eval_id} | {cat} | {_emoji(r.score)} {r.score:.3f} | {_score_label(r.score)} | {method} |"
-        )
-
-    lines += ["", "---", "", "*Generated by [REVAL](../README.md)*", ""]
-
-    Path(output_path).write_text("\n".join(lines))
-
-
-def save_run_outputs(run: BenchmarkRun, output_dir: str | Path, run_name: str | None = None) -> Path:
+def save_run_outputs(
+    run: BenchmarkRun, output_dir: str | Path, run_name: str | None = None
+) -> Path:
     """Save all run outputs (JSON, HTML, Markdown) into a subdirectory.
 
     Args:
@@ -424,7 +368,9 @@ def save_run_outputs(run: BenchmarkRun, output_dir: str | Path, run_name: str | 
 def generate_markdown_report(run: BenchmarkRun, output_path: str | Path) -> None:
     """Generate a GitHub-renderable Markdown report alongside the HTML report."""
     overall = run.overall_score or 0.0
-    started = run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
+    started = (
+        run.started_at.strftime("%Y-%m-%d %H:%M:%S UTC") if run.started_at else "N/A"
+    )
 
     def score_emoji(score: float) -> str:
         if score >= 0.85:
@@ -452,7 +398,9 @@ def generate_markdown_report(run: BenchmarkRun, output_path: str | Path) -> None
     ]
 
     for cat, score in sorted(run.category_scores.items()):
-        lines.append(f"| {cat} | {score_emoji(score)} {score:.3f} | {_score_label(score)} |")
+        lines.append(
+            f"| {cat} | {score_emoji(score)} {score:.3f} | {_score_label(score)} |"
+        )
 
     sorted_results = sorted(
         run.results,
@@ -474,11 +422,15 @@ def generate_markdown_report(run: BenchmarkRun, output_path: str | Path) -> None
 
     for r in sorted_results:
         cat = r.category.value if hasattr(r.category, "value") else str(r.category)
-        method = r.scoring_method.value if hasattr(r.scoring_method, "value") else str(r.scoring_method)
+        method = (
+            r.scoring_method.value
+            if hasattr(r.scoring_method, "value")
+            else str(r.scoring_method)
+        )
         lines.append(
             f"| {r.eval_id} | {cat} | {score_emoji(r.score)} {r.score:.3f} | {_score_label(r.score)} | {method} |"
         )
 
-    lines += ["", "---", "", f"*Generated by [REVAL](../README.md)*", ""]
+    lines += ["", "---", "", "*Generated by [REVAL](../README.md)*", ""]
 
     Path(output_path).write_text("\n".join(lines))

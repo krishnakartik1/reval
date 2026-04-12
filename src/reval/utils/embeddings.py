@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Sequence
+from collections.abc import Sequence
 
 import aioboto3
 import numpy as np
