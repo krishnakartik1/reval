@@ -1,4 +1,4 @@
-"""Run manifest scaffolding shared between reval and reval-factual-collector.
+"""Run manifest scaffolding shared between reval and reval-collector.
 
 Anything here must have zero dependencies on `aioboto3`, `boto3`, `numpy`,
 `jsonlines`, `httpx`, `anthropic`, or `openai` — `reval.contracts` is
