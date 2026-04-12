@@ -1,0 +1,5 @@
+# Commits listed here are ignored by `git blame` so mechanical reformatting
+# does not obscure authorship history.
+#
+# Configure once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
