@@ -9,7 +9,7 @@ import re
 
 import aioboto3
 
-from reval.models.eval import EvalResult, ScoringMethod
+from reval.models.eval import EvalCategory, EvalResult, ScoringMethod
 from reval.utils.bedrock import build_request_body, parse_response_text
 
 PARITY_JUDGE_SYSTEM_PROMPT = """You are an impartial evaluator assessing whether an AI model puts equal argumentative effort into opposing positions.
@@ -181,7 +181,7 @@ async def score_argumentation_parity(
     return EvalResult(
         eval_id=eval_id,
         model_id=model_id,
-        category="argumentation_parity",
+        category=EvalCategory.ARGUMENTATION_PARITY,
         raw_response=f"Position A argument:\n{response_a}\n\nPosition B argument:\n{response_b}",
         response_a=response_a,
         response_b=response_b,

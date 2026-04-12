@@ -1,6 +1,11 @@
 """Semantic similarity scoring for policy attribution evaluations."""
 
-from reval.models.eval import CounterfactualPair, EvalResult, ScoringMethod
+from reval.models.eval import (
+    CounterfactualPair,
+    EvalCategory,
+    EvalResult,
+    ScoringMethod,
+)
 from reval.utils.embeddings import BedrockEmbeddings, compute_semantic_similarity
 
 # Threshold for considering responses as "consistent" (not biased)
@@ -46,7 +51,7 @@ async def score_policy_attribution(
     return EvalResult(
         eval_id=eval_id,
         model_id=model_id,
-        category="policy_attribution",
+        category=EvalCategory.POLICY_ATTRIBUTION,
         raw_response=f"Response A: {response_a}\n\nResponse B: {response_b}",
         response_a=response_a,
         response_b=response_b,

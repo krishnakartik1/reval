@@ -4,11 +4,14 @@ import asyncio
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
 from reval.models.eval import Country, EvalCategory
 from reval.runner import EvalRunner, load_evals_from_directory
+
+load_dotenv()
 
 app = typer.Typer(
     name="reval",

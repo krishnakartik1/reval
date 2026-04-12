@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        exclude: ^showcase/
+      - id: end-of-file-fixer
+        exclude: ^showcase/
+      - id: check-yaml
+      - id: check-toml
+      - id: detect-private-key
+      - id: check-merge-conflict
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.0
+          - types-PyYAML>=6.0
+        args: [--ignore-missing-imports]
+        files: ^src/reval/
