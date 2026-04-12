@@ -1,7 +1,7 @@
 """Zero-dep guard for `reval.contracts`.
 
 The contracts namespace is meant to be portable across reval and
-reval-factual-collector. To keep it transitively dependency-light, this
+reval-collector. To keep it transitively dependency-light, this
 test imports `reval.contracts` in a fresh Python subprocess and asserts
 that none of the forbidden modules got pulled in.
 

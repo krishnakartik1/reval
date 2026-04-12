@@ -34,7 +34,7 @@ REVAL (Robust Evaluation of Values and Alignment in LLMs) is a fact-aligned benc
   - `MinimaxProvider` — MiniMax M2.7 via the Anthropic-compatible endpoint
 - Amazon Bedrock for embeddings (Titan) and LLM judge (Nova, default) — these stay Bedrock-specific; the provider abstraction is for the system-under-test model, not the judge or embeddings.
 - JSONL for dataset storage (one eval per line), JSON Schema validation.
-- **Typer + Rich** for CLI. `reval.contracts` is the shared import surface for both reval and `reval-factual-collector`.
+- **Typer + Rich** for CLI. `reval.contracts` is the shared import surface for both reval and `reval-collector`.
 
 ## Data Model Invariants
 
@@ -48,7 +48,7 @@ These are enforced by the `EvalEntry` `model_validator` in `reval.contracts.mode
 
 The JSON schema at `evals/schema.json` mirrors these rules in `allOf` conditionals. Keep the Pydantic validators and the JSON schema in sync.
 
-**`reval.contracts` zero-dep rule.** The contracts namespace is meant to be portable — `reval-factual-collector` depends on it without pulling in `aioboto3` or any HTTP client library. `tests/test_contracts_imports.py` enforces this via a subprocess-based guard that fails if `import reval.contracts` transitively loads any of `{aioboto3, boto3, numpy, jsonlines, httpx, anthropic, openai}`.
+**`reval.contracts` zero-dep rule.** The contracts namespace is meant to be portable — `reval-collector` depends on it without pulling in `aioboto3` or any HTTP client library. `tests/test_contracts_imports.py` enforces this via a subprocess-based guard that fails if `import reval.contracts` transitively loads any of `{aioboto3, boto3, numpy, jsonlines, httpx, anthropic, openai}`.
 
 ## Run Reproducibility — `RunManifestMixin`
 
@@ -247,7 +247,7 @@ pytest -m eval evaluations/ -v
 5. **All eval entries validated against the JSON schema** before inclusion. The schema and the Pydantic `model_validator` are kept in sync.
 6. **Dataset is JSONL** for easy version control, diffing, and line-by-line append semantics.
 7. **Async execution** with a semaphore for parallel provider calls bounded by `max_concurrent`.
-8. **Provider abstraction is async-first**, with `LLMProvider.acomplete(system, user, *, max_tokens) -> CompletionResult`. Reval's runner uses it natively; collector bridges via `complete_sync` → `asyncio.run(provider.acomplete(...)).text` at its two sync call sites (see `reval-factual-collector/collector/providers/_sync.py`).
+8. **Provider abstraction is async-first**, with `LLMProvider.acomplete(system, user, *, max_tokens) -> CompletionResult`. Reval's runner uses it natively; collector bridges via `complete_sync` → `asyncio.run(provider.acomplete(...)).text` at its two sync call sites (see `reval-collector/collector/providers/_sync.py`).
 9. **`provider_name` identifies the API surface, not the model vendor.** `BedrockProvider.provider_name = "bedrock"` even when the underlying model is Claude. The same vendor model can be reached through multiple surfaces (`claude-sonnet-4-bedrock` via Bedrock, `claude-sonnet-4` via direct Anthropic API) — `model_provider` on the run manifest disambiguates surfaces, `model_id` carries the vendor signal.
 10. **Reproducibility via `git_sha` + `--dirty` suffix, not per-file content hashes.** Everything that matters for reval's reproducibility (judge prompts, schema, rubrics) lives in the reval tree, so the git SHA is the canonical capture. Cross-repo reproducibility for collector-generated data is handled by `GenerationRunManifest.reval_version` (captured via `importlib.metadata.version("reval")` at generation time).
 

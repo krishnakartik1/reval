@@ -183,7 +183,7 @@ The `evaluations/` suite verifies end-to-end that the new scoring fields (`frami
   - LLM-as-judge with rubric (figure treatment, issue framing)
   - LLM-as-judge parity scoring (argumentation parity)
 - ✅ **Four async provider surfaces** behind one `LLMProvider` ABC — Bedrock, Anthropic direct, OpenAI, MiniMax. Picked per-model in `evals/config.yaml` via the `provider:` field.
-- ✅ **`reval.contracts` shared namespace** — zero-dep (pydantic + stdlib only), imported as the contract source of truth by `reval-factual-collector` without dragging in any HTTP client libraries.
+- ✅ **`reval.contracts` shared namespace** — zero-dep (pydantic + stdlib only), imported as the contract source of truth by `reval-collector` without dragging in any HTTP client libraries.
 - ✅ **`RunManifestMixin`** with `git_sha` (`--dirty`-aware), `run_id`, `model_provider`, `model_id`, `stage_timings`, `error_count` — inherited by both reval's `BenchmarkRun` and collector's `GenerationRunManifest`.
 - ✅ Interactive HTML report dashboard
 - ✅ GitHub-renderable Markdown report
@@ -444,9 +444,9 @@ parity_score = judge.compare(
 | CLI | Typer + Rich |
 | CI | GitHub Actions — `test.yml` (every PR) + `evals.yml` (label-triggered live API) |
 
-### Companion repo: `reval-factual-collector`
+### Companion repo: `reval-collector`
 
-[`reval-factual-collector`](https://github.com/krishnakartik1/reval-factual-collector) generates new eval cases via a LangGraph multi-agent pipeline (search → generate → research → score → quality filter) and exports them into reval's dataset format. It depends on reval as an editable package, imports `reval.contracts.models.EvalEntry` directly for its `TestCase.to_eval_entry()` method, and routes all LLM calls through `reval.providers.factory.provider_from_config`. Changes to reval's `EvalEntry` schema automatically flow through the collector's round-trip test — there's no silent drift surface between the two repos.
+[`reval-collector`](https://github.com/krishnakartik1/reval-collector) generates new eval cases via a LangGraph multi-agent pipeline (search → generate → research → score → quality filter) and exports them into reval's dataset format. It depends on reval as an editable package, imports `reval.contracts.models.EvalEntry` directly for its `TestCase.to_eval_entry()` method, and routes all LLM calls through `reval.providers.factory.provider_from_config`. Changes to reval's `EvalEntry` schema automatically flow through the collector's round-trip test — there's no silent drift surface between the two repos.
 
 ---
 

@@ -1,7 +1,7 @@
 """reval.contracts — shared data contracts with zero runtime dependencies.
 
 This namespace is the source of truth for types both reval and
-reval-factual-collector rely on. It intentionally imports only `pydantic` +
+reval-collector rely on. It intentionally imports only `pydantic` +
 stdlib; see `tests/test_contracts_imports.py` for the zero-dep guard.
 """
 

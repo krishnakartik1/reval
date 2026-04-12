@@ -8,7 +8,7 @@ providers you can reach.
 
 Phase 3 of the unification plan added these three providers to reval
 alongside the existing `BedrockProvider`. The equivalent collector-
-side file (`reval-factual-collector/evaluations/eval_providers.py`)
+side file (`reval-collector/evaluations/eval_providers.py`)
 is slated for deletion in the Phase 3 collector PR — reval's
 providers are now the canonical implementations, so reval owns the
 real-API coverage too.
