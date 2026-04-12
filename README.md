@@ -110,26 +110,33 @@ Beyond what models say, we measure *how hard they try*:
 ```bash
 git clone https://github.com/krishnakartik1/reval
 cd reval
-pip install -e .
+pip install -e ".[dev]"
+cp .env.example .env
+# Fill in the keys for whichever provider surface(s) you plan to run against.
 ```
 
-Requires AWS credentials configured for Amazon Bedrock access.
+Reval supports four provider surfaces: **AWS Bedrock**, **Anthropic direct**, **OpenAI** (plus OpenAI-compatible endpoints), and **MiniMax**. You only need credentials for the surface(s) you actually use. The LLM judge and embeddings still run on Amazon Bedrock (Nova Lite + Titan), so any run — regardless of the system-under-test provider — needs AWS credentials for scoring.
 
 ### Run Benchmark
 
-```bash
-# Run full benchmark on a model
-reval run --model amazon.nova-pro-v1:0
+Models are looked up in `evals/config.yaml`. The `provider:` field on each entry identifies the API surface; `resolve_model` in the CLI routes the call to the right `LLMProvider` implementation.
 
-# Use a short alias from config.yaml
-reval run --model claude-haiku-3-5
+```bash
+# Bedrock-hosted models
+reval run --model claude-haiku-3-5                   # us.anthropic.claude-3-5-haiku via Bedrock
+reval run --model amazon.nova-pro-v1:0               # raw Bedrock ARN — defaults to bedrock surface
+
+# Non-Bedrock surfaces (added in Phase 3 of the unification plan)
+reval run --model claude-sonnet-4                    # Anthropic direct API
+reval run --model gpt-4o                             # OpenAI
+reval run --model minimax-m2-7                       # MiniMax via Anthropic-compatible endpoint
 
 # Filter by country or category
-reval run --model amazon.nova-pro-v1:0 --country us
-reval run --model amazon.nova-pro-v1:0 --category policy_attribution
+reval run --model claude-haiku-3-5 --country us
+reval run --model claude-haiku-3-5 --category policy_attribution
 
-# Custom judge and embeddings models
-reval run --model amazon.nova-pro-v1:0 --judge-model amazon.nova-lite-v1:0 --embeddings-model amazon.titan-embed-text-v2:0
+# Custom judge and embeddings models (stay on Bedrock)
+reval run --model claude-sonnet-4 --judge-model amazon.nova-pro-v1:0 --embeddings-model amazon.titan-embed-text-v2:0
 ```
 
 Each run creates a folder under `results/` named `{model}_{timestamp}/` containing:
@@ -175,11 +182,14 @@ The `evaluations/` suite verifies end-to-end that the new scoring fields (`frami
   - Embedding-based ground truth match (factual accuracy)
   - LLM-as-judge with rubric (figure treatment, issue framing)
   - LLM-as-judge parity scoring (argumentation parity)
-- ✅ Amazon Bedrock integration — supports Nova, Claude, Titan, Llama
+- ✅ **Four async provider surfaces** behind one `LLMProvider` ABC — Bedrock, Anthropic direct, OpenAI, MiniMax. Picked per-model in `evals/config.yaml` via the `provider:` field.
+- ✅ **`reval.contracts` shared namespace** — zero-dep (pydantic + stdlib only), imported as the contract source of truth by `reval-factual-collector` without dragging in any HTTP client libraries.
+- ✅ **`RunManifestMixin`** with `git_sha` (`--dirty`-aware), `run_id`, `model_provider`, `model_id`, `stage_timings`, `error_count` — inherited by both reval's `BenchmarkRun` and collector's `GenerationRunManifest`.
 - ✅ Interactive HTML report dashboard
 - ✅ GitHub-renderable Markdown report
-- ✅ CLI with `run`, `validate`, `list-evals`, `info` commands
+- ✅ Typer CLI with `run`, `validate`, `list-evals`, `info` commands
 - ✅ Dataset validation against JSON schema
+- ✅ GitHub Actions: fast-gate `test.yml` (pre-commit + pytest + coverage) on every PR; label-triggered `evals.yml` for live-API integration tests
 - ✅ 54 eval entries across US and India (figure_treatment entries are paired — 7 pairs = 14 prompts)
 
 ### Dataset Coverage
@@ -422,11 +432,21 @@ parity_score = judge.compare(
 | Component | Technology |
 |-----------|------------|
 | Language | Python 3.10+ |
-| Data Validation | Pydantic v2 |
-| LLM + Embeddings | Amazon Bedrock (aioboto3) |
-| Storage | JSONL + JSON |
-| Async | asyncio + aioboto3 |
+| Data Validation | Pydantic v2 (shared contracts in `reval.contracts`) |
+| Provider Abstraction | Async `LLMProvider` ABC + factory dispatch |
+| Bedrock | `aioboto3` → Claude / Nova / Meta Llama / Titan format dispatch |
+| Anthropic | `anthropic.AsyncAnthropic` (direct Messages API) |
+| OpenAI | `openai.AsyncOpenAI` (+ `base_url` for Together / Groq / OpenRouter / Fireworks) |
+| MiniMax | `anthropic.AsyncAnthropic` pointed at `api.minimax.io/anthropic` |
+| Judge + Embeddings | Bedrock Nova Lite + Titan (stay Bedrock-specific) |
+| Storage | JSONL + JSON Schema validation |
+| Async | `asyncio` + `asyncio.Semaphore` for parallel provider calls |
 | CLI | Typer + Rich |
+| CI | GitHub Actions — `test.yml` (every PR) + `evals.yml` (label-triggered live API) |
+
+### Companion repo: `reval-factual-collector`
+
+[`reval-factual-collector`](https://github.com/krishnakartik1/reval-factual-collector) generates new eval cases via a LangGraph multi-agent pipeline (search → generate → research → score → quality filter) and exports them into reval's dataset format. It depends on reval as an editable package, imports `reval.contracts.models.EvalEntry` directly for its `TestCase.to_eval_entry()` method, and routes all LLM calls through `reval.providers.factory.provider_from_config`. Changes to reval's `EvalEntry` schema automatically flow through the collector's round-trip test — there's no silent drift surface between the two repos.
 
 ---
 
