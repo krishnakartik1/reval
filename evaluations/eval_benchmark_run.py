@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from reval.models.eval import BenchmarkRun, EvalCategory
+from reval.contracts import BenchmarkRun, EvalCategory
 from reval.runner import load_evals_from_directory
 
 _DATASETS_DIR = Path(__file__).parent.parent / "evals" / "datasets"
@@ -32,7 +32,7 @@ class TestRunBenchmarkFactualAccuracy:
         run: BenchmarkRun = await eval_runner.run_benchmark(evals)
 
         assert run.completed_evals == 2
-        assert run.failed_evals == 0
+        assert run.error_count == 0
         assert len(run.results) == 2
         assert run.overall_score is not None
         assert 0.0 <= run.overall_score <= 1.0
@@ -62,7 +62,7 @@ class TestRunBenchmarkFigureTreatment:
         run: BenchmarkRun = await eval_runner.run_benchmark(evals)
 
         assert run.completed_evals == 1
-        assert run.failed_evals == 0
+        assert run.error_count == 0
         assert "figure_treatment" in run.category_scores
 
         result = run.results[0]

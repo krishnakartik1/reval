@@ -10,7 +10,7 @@ Hits real Bedrock to verify end-to-end that:
 
 import pytest
 
-from reval.models.eval import EvalCategory, EvalEntry, FigurePair, ScoringMethod
+from reval.contracts import EvalCategory, EvalEntry, FigurePair, ScoringMethod
 
 
 def _trump_biden_pair() -> EvalEntry:

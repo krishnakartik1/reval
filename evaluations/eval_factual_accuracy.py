@@ -10,7 +10,7 @@ Hits real Bedrock to verify end-to-end that:
 
 import pytest
 
-from reval.models.eval import (
+from reval.contracts import (
     EvalCategory,
     EvalEntry,
     GroundTruth,

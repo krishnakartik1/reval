@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from reval.models.eval import (
+from reval.contracts import (
     CounterfactualPair,
     EvalCategory,
     EvalEntry,
@@ -13,6 +13,7 @@ from reval.models.eval import (
     GroundTruthLevel,
     ScoringMethod,
 )
+from tests.fixtures.benchmark_run import make_benchmark_run
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -292,22 +293,16 @@ class TestEvalResultNewFields:
     def test_benchmark_run_is_complete(self):
         from datetime import datetime, timezone
 
-        from reval.models.eval import BenchmarkRun
-
-        run = BenchmarkRun(run_id="r", model_id="m", eval_ids=["x"])
+        run = make_benchmark_run(eval_ids=["x"])
         assert run.is_complete is False
         run.completed_at = datetime.now(timezone.utc)
         assert run.is_complete is True
 
     def test_benchmark_run_progress(self):
-        from reval.models.eval import BenchmarkRun
-
-        empty = BenchmarkRun(run_id="r", model_id="m", eval_ids=[], total_evals=0)
+        empty = make_benchmark_run(eval_ids=[], total_evals=0)
         assert empty.progress == 0.0
 
-        partial = BenchmarkRun(
-            run_id="r",
-            model_id="m",
+        partial = make_benchmark_run(
             eval_ids=["a", "b", "c", "d"],
             total_evals=4,
             completed_evals=2,

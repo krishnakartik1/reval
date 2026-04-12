@@ -43,15 +43,22 @@ def eval_runner(bedrock_available, aws_region):
     """Build an EvalRunner pointed at the evals/rubrics directory."""
     from pathlib import Path
 
+    from reval.providers.factory import provider_from_config
     from reval.runner import EvalRunner
+    from reval.scoring.judge import BedrockJudge
+    from reval.scoring.parity import ParityJudge
+    from reval.utils.embeddings import BedrockEmbeddings
 
     # Small, fast model for eval assertions — users can override via env
     model_id = os.environ.get("REVAL_EVAL_MODEL", "amazon.nova-lite-v1:0")
     rubrics_dir = Path(__file__).parent.parent / "evals" / "rubrics"
 
+    provider = provider_from_config("bedrock", model_id=model_id, region=aws_region)
     return EvalRunner(
-        model_id=model_id,
+        provider=provider,
+        judge=BedrockJudge(region=aws_region),
+        parity_judge=ParityJudge(region=aws_region),
+        embeddings=BedrockEmbeddings(region=aws_region),
         rubrics_dir=rubrics_dir,
-        region=aws_region,
         max_concurrent=2,
     )
