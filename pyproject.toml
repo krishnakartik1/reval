@@ -65,7 +65,11 @@ known-first-party = ["reval"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "evaluations"]
+python_files = ["test_*.py", "eval_*.py"]
+markers = [
+    "eval: evaluation tests — run with: pytest -m eval (requires AWS credentials)",
+]
 
 [tool.mypy]
 python_version = "3.10"
