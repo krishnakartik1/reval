@@ -70,3 +70,24 @@ async def test_acomplete_strips_thinking_blocks() -> None:
 
 def test_provider_name_is_minimax() -> None:
     assert MinimaxProvider.provider_name == "minimax"
+
+
+def test_init_falls_back_to_minimax_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MINIMAX_API_KEY", "test-minimax-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+
+    provider = MinimaxProvider(model_id="MiniMax-M2.7")
+
+    assert provider._client.api_key == "test-minimax-key"
+
+
+def test_init_raises_when_no_key_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="MINIMAX_API_KEY"):
+        MinimaxProvider(model_id="MiniMax-M2.7")
