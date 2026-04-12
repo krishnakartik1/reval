@@ -15,10 +15,11 @@ class BedrockEmbeddings:
         self,
         model_id: str = "amazon.titan-embed-text-v2:0",
         region: str = "us-east-1",
+        session: aioboto3.Session | None = None,
     ):
         self.model_id = model_id
         self.region = region
-        self._session = aioboto3.Session()
+        self._session = session or aioboto3.Session()
 
     async def get_embedding(self, text: str) -> np.ndarray:
         """Get embedding for a single text."""

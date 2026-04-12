@@ -1,6 +1,6 @@
 """Semantic similarity scoring for policy attribution evaluations."""
 
-from reval.models.eval import (
+from reval.contracts import (
     CounterfactualPair,
     EvalCategory,
     EvalResult,

@@ -1,13 +1,23 @@
-"""Pydantic models for REVAL evaluation entries."""
+"""Pydantic data contracts for reval — eval entries, results, benchmark runs.
+
+Moved here from `reval.models.eval` as part of the Phase 1 unification so
+`reval.contracts` becomes the single shared data-model namespace. This
+module has zero dependencies on `aioboto3`, `numpy`, `jsonlines`, or any
+HTTP client library.
+"""
+
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
 
+from reval.contracts.manifest import RunManifestMixin
+
 
 class EvalCategory(str, Enum):
-    """Categories of evaluation in REVAL."""
+    """Categories of evaluation in reval."""
 
     POLICY_ATTRIBUTION = "policy_attribution"
     FIGURE_TREATMENT = "figure_treatment"
@@ -127,7 +137,7 @@ class GroundTruth(BaseModel):
 
 
 class EvalEntry(BaseModel):
-    """A single evaluation entry in the REVAL benchmark.
+    """A single evaluation entry in the reval benchmark.
 
     This is the core data model that represents one evaluation item.
     Different categories use different fields.
@@ -178,7 +188,7 @@ class EvalEntry(BaseModel):
     notes: str | None = Field(None, description="Additional notes for eval creators")
 
     @model_validator(mode="after")
-    def validate_category_fields(self) -> "EvalEntry":
+    def validate_category_fields(self) -> EvalEntry:
         """Validate that category-specific required fields are present."""
         cat = self.category
         if cat == EvalCategory.POLICY_ATTRIBUTION and self.counterfactual_pair is None:
@@ -269,16 +279,20 @@ class EvalResult(BaseModel):
     latency_ms: int | None = Field(None, description="API call latency in milliseconds")
 
 
-class BenchmarkRun(BaseModel):
-    """A complete benchmark run across multiple evaluations."""
+class BenchmarkRun(RunManifestMixin):
+    """A complete benchmark run across multiple evaluations.
 
-    run_id: str = Field(..., description="Unique identifier for this run")
-    model_id: str = Field(..., description="Model being benchmarked")
+    Inherits reproducibility fields (`run_id`, `timestamp`, `git_sha`,
+    `model_provider`, `model_id`, `stage_timings`, `error_count`) from
+    `RunManifestMixin`. Adding new reproducibility fields to the mixin
+    propagates to collector's `GenerationRunManifest` automatically —
+    that is the point of the mixin.
+    """
+
     judge_model_id: str | None = Field(None, description="Model used as LLM judge")
     embeddings_model_id: str | None = Field(
         None, description="Model used for embeddings"
     )
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
 
     # Results
@@ -296,7 +310,6 @@ class BenchmarkRun(BaseModel):
     # Status
     total_evals: int = 0
     completed_evals: int = 0
-    failed_evals: int = 0
 
     @property
     def is_complete(self) -> bool:
