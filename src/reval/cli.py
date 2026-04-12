@@ -133,13 +133,13 @@ def run(
     ),
 ) -> None:
     """Run the benchmark on a model."""
-    from reval.config import load_config, resolve_model_id
+    from reval.config import load_config, resolve_model
     from reval.scoring.judge import BedrockJudge
     from reval.scoring.parity import ParityJudge
     from reval.utils.embeddings import BedrockEmbeddings
 
     config = load_config(config_path)
-    model = resolve_model_id(model, config)
+    provider_name, model = resolve_model(model, config)
     judge_model_id = judge_model or config.judge_model_id
     embeddings_model_id = embeddings_model or config.embeddings_model_id
 
@@ -157,10 +157,14 @@ def run(
 
     console.print(f"Found [green]{len(evals)}[/green] evaluations to run.\n")
 
-    # Build the provider + scoring clients. Phase 3 will read `provider:`
-    # from the YAML entry via resolve_model_provider; Phase 1 hardcodes
-    # Bedrock since that is still the only implementation.
-    provider = provider_from_config("bedrock", model_id=model, region=region)
+    # Build the provider + scoring clients. `provider_name` comes from the
+    # YAML entry's `provider:` field (bedrock | anthropic | openai | minimax).
+    # Bedrock-only kwargs (like `region`) flow to BedrockProvider; non-Bedrock
+    # providers ignore them.
+    provider_kwargs: dict = {}
+    if provider_name == "bedrock":
+        provider_kwargs["region"] = region
+    provider = provider_from_config(provider_name, model_id=model, **provider_kwargs)
     judge = BedrockJudge(model_id=judge_model_id, region=region)
     parity_judge = ParityJudge(model_id=judge_model_id, region=region)
     embeddings = BedrockEmbeddings(model_id=embeddings_model_id, region=region)
