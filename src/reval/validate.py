@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-import jsonschema
 import jsonlines
+import jsonschema
 from rich.console import Console
 from rich.table import Table
 
@@ -43,9 +43,7 @@ def validate_entry(entry: dict, schema: dict, entry_id: str) -> list[str]:
         level = gt.get("level")
         citations = gt.get("citations", [])
         if level in (1, 2) and not citations:
-            errors.append(
-                f"ground_truth: Level {level} claims should have citations"
-            )
+            errors.append(f"ground_truth: Level {level} claims should have citations")
 
     if category == "argumentation_parity":
         if entry.get("position_a") == entry.get("position_b"):
@@ -65,7 +63,9 @@ def validate_entry(entry: dict, schema: dict, entry_id: str) -> list[str]:
     return errors
 
 
-def validate_file(file_path: Path, schema: dict) -> tuple[int, int, list[tuple[str, list[str]]]]:
+def validate_file(
+    file_path: Path, schema: dict
+) -> tuple[int, int, list[tuple[str, list[str]]]]:
     """Validate all entries in a JSONL file.
 
     Returns: (valid_count, invalid_count, list of (entry_id, errors))
@@ -125,7 +125,9 @@ def validate_dataset(
         if verbose or invalid > 0:
             rel_path = file_path.relative_to(dataset_dir)
             if invalid > 0:
-                console.print(f"[red]✗[/red] {rel_path}: {valid} valid, {invalid} invalid")
+                console.print(
+                    f"[red]✗[/red] {rel_path}: {valid} valid, {invalid} invalid"
+                )
                 for entry_id, entry_errors in errors:
                     console.print(f"  [red]{entry_id}:[/red]")
                     for err in entry_errors:
@@ -141,7 +143,10 @@ def validate_dataset(
 
     table.add_row("Total entries", str(total_valid + total_invalid))
     table.add_row("Valid", str(total_valid))
-    table.add_row("Invalid", str(total_invalid) if total_invalid == 0 else f"[red]{total_invalid}[/red]")
+    table.add_row(
+        "Invalid",
+        str(total_invalid) if total_invalid == 0 else f"[red]{total_invalid}[/red]",
+    )
     table.add_row("Files checked", str(len(jsonl_files)))
 
     console.print(table)

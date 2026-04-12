@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class EvalCategory(str, Enum):
@@ -56,7 +56,9 @@ class SourceCitation(BaseModel):
 
     source: str = Field(..., description="Name of the source (e.g., 'CDC', 'WHO')")
     url: str | None = Field(None, description="URL to the source")
-    date_accessed: datetime | None = Field(None, description="When the source was accessed")
+    date_accessed: datetime | None = Field(
+        None, description="When the source was accessed"
+    )
     quote: str | None = Field(None, description="Relevant quote from the source")
 
 
@@ -72,6 +74,21 @@ class CounterfactualPair(BaseModel):
     entity_a: str = Field(..., description="Political entity in prompt A")
     entity_b: str = Field(..., description="Political entity in prompt B")
     policy_topic: str = Field(..., description="The policy being discussed")
+
+
+class FigurePair(BaseModel):
+    """A pair of prompts about opposing political figures on the same topic.
+
+    Used for figure_treatment evaluations to detect differential treatment
+    of political figures from opposing affiliations.
+    """
+
+    prompt_a: str = Field(..., description="Prompt about figure A")
+    prompt_b: str = Field(..., description="Prompt about figure B")
+    figure_a: str = Field(..., description="Name of figure A")
+    figure_b: str = Field(..., description="Name of figure B")
+    affiliation_a: str = Field(..., description="Party/affiliation of figure A")
+    affiliation_b: str = Field(..., description="Party/affiliation of figure B")
 
 
 class RubricCriterion(BaseModel):
@@ -130,11 +147,21 @@ class EvalEntry(BaseModel):
     )
 
     # LLM Judge specific (figure_treatment, issue_framing)
-    rubric_id: str | None = Field(None, description="ID of the rubric to use for scoring")
+    rubric_id: str | None = Field(
+        None, description="ID of the rubric to use for scoring"
+    )
+
+    # Figure Treatment specific — paired prompts about opposing figures
+    figure_pair: FigurePair | None = Field(
+        None, description="For figure_treatment category — paired figure prompts"
+    )
 
     # Factual Accuracy specific
     ground_truth: GroundTruth | None = Field(
         None, description="For factual_accuracy category"
+    )
+    counterfactual_prompt: str | None = Field(
+        None, description="Same fact asked differently — tests framing consistency"
     )
 
     # Argumentation Parity specific
@@ -142,44 +169,34 @@ class EvalEntry(BaseModel):
     position_b: str | None = Field(None, description="Opposing position to argue for")
 
     # Metadata
-    topic: str = Field(..., description="Topic area (e.g., 'healthcare', 'immigration')")
+    topic: str = Field(
+        ..., description="Topic area (e.g., 'healthcare', 'immigration')"
+    )
     subtopic: str | None = Field(None, description="More specific topic")
     tags: list[str] = Field(default_factory=list, description="Additional tags")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     notes: str | None = Field(None, description="Additional notes for eval creators")
 
-    @field_validator("counterfactual_pair")
-    @classmethod
-    def validate_counterfactual_for_policy_attribution(
-        cls, v: CounterfactualPair | None, info
-    ) -> CounterfactualPair | None:
-        if info.data.get("category") == EvalCategory.POLICY_ATTRIBUTION and v is None:
+    @model_validator(mode="after")
+    def validate_category_fields(self) -> "EvalEntry":
+        """Validate that category-specific required fields are present."""
+        cat = self.category
+        if cat == EvalCategory.POLICY_ATTRIBUTION and self.counterfactual_pair is None:
             raise ValueError("policy_attribution category requires counterfactual_pair")
-        return v
-
-    @field_validator("ground_truth")
-    @classmethod
-    def validate_ground_truth_for_factual_accuracy(
-        cls, v: GroundTruth | None, info
-    ) -> GroundTruth | None:
-        if info.data.get("category") == EvalCategory.FACTUAL_ACCURACY and v is None:
-            raise ValueError("factual_accuracy category requires ground_truth")
-        return v
-
-    @field_validator("prompt")
-    @classmethod
-    def validate_prompt_for_non_policy_attribution(
-        cls, v: str | None, info
-    ) -> str | None:
-        category = info.data.get("category")
-        needs_prompt = category in [
-            EvalCategory.FIGURE_TREATMENT,
-            EvalCategory.ISSUE_FRAMING,
-            EvalCategory.FACTUAL_ACCURACY,
-        ]
-        if needs_prompt and v is None:
-            raise ValueError(f"{category} category requires a prompt")
-        return v
+        if cat == EvalCategory.FIGURE_TREATMENT and self.figure_pair is None:
+            raise ValueError("figure_treatment category requires figure_pair")
+        if cat == EvalCategory.FACTUAL_ACCURACY:
+            if self.ground_truth is None:
+                raise ValueError("factual_accuracy category requires ground_truth")
+            if self.counterfactual_prompt is None:
+                raise ValueError(
+                    "factual_accuracy category requires counterfactual_prompt"
+                )
+            if self.prompt is None:
+                raise ValueError("factual_accuracy category requires a prompt")
+        if cat == EvalCategory.ISSUE_FRAMING and self.prompt is None:
+            raise ValueError("issue_framing category requires a prompt")
+        return self
 
 
 class EvalResult(BaseModel):
@@ -193,8 +210,12 @@ class EvalResult(BaseModel):
     raw_response: str = Field(..., description="The model's raw response")
 
     # For policy_attribution: responses to both prompts
-    response_a: str | None = Field(None, description="Response to counterfactual prompt A")
-    response_b: str | None = Field(None, description="Response to counterfactual prompt B")
+    response_a: str | None = Field(
+        None, description="Response to counterfactual prompt A"
+    )
+    response_b: str | None = Field(
+        None, description="Response to counterfactual prompt B"
+    )
 
     # Scores
     score: float = Field(..., ge=0, le=1, description="Normalized score (0-1)")
@@ -212,6 +233,37 @@ class EvalResult(BaseModel):
         None, description="LLM judge's reasoning for the score"
     )
 
+    # Factual accuracy: counterfactual framing consistency
+    counterfactual_response: str | None = Field(
+        None, description="Response to the counterfactual prompt"
+    )
+    counterfactual_similarity: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Similarity of counterfactual response to ground truth",
+    )
+    framing_consistency: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Similarity between original and counterfactual responses",
+    )
+
+    # Figure treatment: paired scoring
+    score_a: float | None = Field(
+        None, ge=0, le=1, description="Judge score for figure A"
+    )
+    score_b: float | None = Field(
+        None, ge=0, le=1, description="Judge score for figure B"
+    )
+    treatment_parity: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description="How equally both figures were treated (1.0 = equal)",
+    )
+
     # Metadata
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     latency_ms: int | None = Field(None, description="API call latency in milliseconds")
@@ -223,7 +275,9 @@ class BenchmarkRun(BaseModel):
     run_id: str = Field(..., description="Unique identifier for this run")
     model_id: str = Field(..., description="Model being benchmarked")
     judge_model_id: str | None = Field(None, description="Model used as LLM judge")
-    embeddings_model_id: str | None = Field(None, description="Model used for embeddings")
+    embeddings_model_id: str | None = Field(
+        None, description="Model used for embeddings"
+    )
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
 

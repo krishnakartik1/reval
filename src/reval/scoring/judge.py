@@ -100,9 +100,7 @@ class BedrockJudge:
 
             return self._parse_judge_response(judge_response)
 
-    def _parse_judge_response(
-        self, response: str
-    ) -> tuple[dict[str, int], str]:
+    def _parse_judge_response(self, response: str) -> tuple[dict[str, int], str]:
         """Parse the judge's JSON response.
 
         Args:
@@ -151,7 +149,9 @@ async def score_with_judge(
         EvalResult with judge-based scores
     """
     judge_instance = judge or BedrockJudge()
-    criterion_scores, reasoning = await judge_instance.evaluate(prompt, response, rubric)
+    criterion_scores, reasoning = await judge_instance.evaluate(
+        prompt, response, rubric
+    )
 
     # Compute weighted score
     score = compute_weighted_score(criterion_scores, rubric)

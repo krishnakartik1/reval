@@ -4,9 +4,9 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Callable
 
 import aioboto3
 import jsonlines
@@ -18,6 +18,7 @@ from reval.models.eval import (
     EvalEntry,
     EvalResult,
     Rubric,
+    ScoringMethod,
 )
 from reval.scoring.judge import BedrockJudge, score_with_judge
 from reval.scoring.parity import ParityJudge, score_argumentation_parity
@@ -88,7 +89,9 @@ class EvalRunner:
         # Initialize clients
         self.model_client = ModelClient(model_id, region)
         if embeddings_model_id:
-            self.embeddings = BedrockEmbeddings(model_id=embeddings_model_id, region=region)
+            self.embeddings = BedrockEmbeddings(
+                model_id=embeddings_model_id, region=region
+            )
         else:
             self.embeddings = BedrockEmbeddings(region=region)
         if judge_model_id:
@@ -155,6 +158,8 @@ class EvalRunner:
         """Run a factual accuracy evaluation."""
         if not entry.prompt or not entry.ground_truth:
             raise ValueError("Factual accuracy requires prompt and ground_truth")
+        if not entry.counterfactual_prompt:
+            raise ValueError("Factual accuracy requires counterfactual_prompt")
 
         response, latency = await self.model_client.generate(entry.prompt)
 
@@ -178,6 +183,19 @@ class EvalRunner:
             # More lenient for contested topics - reward balanced responses
             score = min(1.0, max(0.0, similarity * 1.2))  # Slight boost, clamped
 
+        # Score the counterfactual prompt for framing consistency
+        cf_response, _ = await self.model_client.generate(entry.counterfactual_prompt)
+        cf_similarity = await compute_semantic_similarity(
+            cf_response,
+            entry.ground_truth.correct_response,
+            self.embeddings,
+        )
+        framing_consistency = await compute_semantic_similarity(
+            response,
+            cf_response,
+            self.embeddings,
+        )
+
         return EvalResult(
             eval_id=entry.id,
             model_id=self.model_id,
@@ -185,20 +203,86 @@ class EvalRunner:
             raw_response=response,
             score=score,
             raw_score=similarity,
-            scoring_method="ground_truth_match",
+            scoring_method=ScoringMethod.GROUND_TRUTH_MATCH,
             similarity_score=similarity,
+            counterfactual_response=cf_response,
+            counterfactual_similarity=cf_similarity,
+            framing_consistency=framing_consistency,
             latency_ms=latency,
         )
 
     async def _run_judge_eval(self, entry: EvalEntry) -> EvalResult:
-        """Run a judge-based evaluation (figure treatment or issue framing)."""
-        if not entry.prompt or not entry.rubric_id:
-            raise ValueError(f"{entry.category} requires prompt and rubric_id")
+        """Run a judge-based evaluation (figure treatment or issue framing).
+
+        For figure_treatment with figure_pair: scores both figures independently
+        with the same rubric, then computes treatment_parity as the equality of
+        scores between the two figures.
+
+        For issue_framing: single-prompt judge evaluation.
+        """
+        if not entry.rubric_id:
+            raise ValueError(f"{entry.category} requires rubric_id")
 
         if entry.rubric_id not in self.rubrics:
             raise ValueError(f"Unknown rubric: {entry.rubric_id}")
 
         rubric = self.rubrics[entry.rubric_id]
+
+        # Paired figure treatment
+        if entry.category == EvalCategory.FIGURE_TREATMENT:
+            if not entry.figure_pair:
+                raise ValueError("figure_treatment requires figure_pair")
+
+            response_a, _ = await self.model_client.generate(entry.figure_pair.prompt_a)
+            response_b, latency = await self.model_client.generate(
+                entry.figure_pair.prompt_b
+            )
+
+            result_a = await score_with_judge(
+                prompt=entry.figure_pair.prompt_a,
+                response=response_a,
+                rubric=rubric,
+                eval_id=entry.id,
+                model_id=self.model_id,
+                category=entry.category,
+                judge=self.judge,
+            )
+            result_b = await score_with_judge(
+                prompt=entry.figure_pair.prompt_b,
+                response=response_b,
+                rubric=rubric,
+                eval_id=entry.id,
+                model_id=self.model_id,
+                category=entry.category,
+                judge=self.judge,
+            )
+
+            treatment_parity = 1.0 - abs(result_a.score - result_b.score)
+
+            return EvalResult(
+                eval_id=entry.id,
+                model_id=self.model_id,
+                category=EvalCategory.FIGURE_TREATMENT,
+                raw_response=f"Figure A: {response_a}\n\nFigure B: {response_b}",
+                response_a=response_a,
+                response_b=response_b,
+                score=treatment_parity,
+                score_a=result_a.score,
+                score_b=result_b.score,
+                treatment_parity=treatment_parity,
+                scoring_method=ScoringMethod.LLM_JUDGE,
+                rubric_scores=result_a.rubric_scores,
+                judge_reasoning=(
+                    f"Figure A: {result_a.judge_reasoning}\n\n"
+                    f"Figure B: {result_b.judge_reasoning}"
+                ),
+                latency_ms=latency,
+            )
+
+        # Single-prompt issue framing
+        if not entry.prompt:
+            raise ValueError(f"{entry.category} requires prompt")
+
         response, latency = await self.model_client.generate(entry.prompt)
 
         result = await score_with_judge(
@@ -287,22 +371,21 @@ class EvalRunner:
 
         return run
 
-    def _calculate_category_scores(
-        self, results: list[EvalResult]
-    ) -> dict[str, float]:
+    def _calculate_category_scores(self, results: list[EvalResult]) -> dict[str, float]:
         """Calculate average scores per category."""
         by_category: dict[str, list[float]] = {}
 
         for result in results:
-            cat = result.category.value if hasattr(result.category, "value") else str(result.category)
+            cat = (
+                result.category.value
+                if hasattr(result.category, "value")
+                else str(result.category)
+            )
             if cat not in by_category:
                 by_category[cat] = []
             by_category[cat].append(result.score)
 
-        return {
-            cat: sum(scores) / len(scores)
-            for cat, scores in by_category.items()
-        }
+        return {cat: sum(scores) / len(scores) for cat, scores in by_category.items()}
 
 
 def load_evals_from_jsonl(path: str | Path) -> list[EvalEntry]:

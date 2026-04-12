@@ -11,8 +11,9 @@ from pathlib import Path
 # Add src to path for standalone execution
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from reval.validate import validate_dataset
 from rich.console import Console
+
+from reval.validate import validate_dataset
 
 console = Console()
 
@@ -35,7 +36,8 @@ def main():
         help="Path to JSON schema",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show all results, not just errors",
     )
@@ -44,8 +46,12 @@ def main():
 
     # Resolve paths relative to project root if needed
     project_root = Path(__file__).parent.parent
-    dataset_path = args.dataset if args.dataset.is_absolute() else project_root / args.dataset
-    schema_path = args.schema if args.schema.is_absolute() else project_root / args.schema
+    dataset_path = (
+        args.dataset if args.dataset.is_absolute() else project_root / args.dataset
+    )
+    schema_path = (
+        args.schema if args.schema.is_absolute() else project_root / args.schema
+    )
 
     if not schema_path.exists():
         console.print(f"[red]Schema not found: {schema_path}[/red]")

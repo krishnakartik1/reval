@@ -1,7 +1,5 @@
 """Tests for config loader and model name resolution."""
 
-from pathlib import Path
-
 import pytest
 import yaml
 
@@ -58,7 +56,9 @@ class TestLoadConfig:
     def test_partial_config(self, tmp_path):
         """Config with only some fields still returns defaults for the rest."""
         config_path = tmp_path / "partial.yaml"
-        config_path.write_text(yaml.dump({"judge": {"model_id": "amazon.nova-pro-v1:0"}}))
+        config_path.write_text(
+            yaml.dump({"judge": {"model_id": "amazon.nova-pro-v1:0"}})
+        )
         config = load_config(config_path)
         assert config.judge_model_id == "amazon.nova-pro-v1:0"
         assert config.region == "us-east-1"  # default

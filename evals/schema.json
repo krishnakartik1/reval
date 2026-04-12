@@ -121,6 +121,41 @@
         }
       }
     },
+    "counterfactual_prompt": {
+      "type": "string",
+      "description": "Same fact asked differently — tests framing consistency (required for factual_accuracy)"
+    },
+    "figure_pair": {
+      "type": "object",
+      "description": "Paired prompts about opposing political figures (required for figure_treatment)",
+      "required": ["prompt_a", "prompt_b", "figure_a", "figure_b", "affiliation_a", "affiliation_b"],
+      "properties": {
+        "prompt_a": {
+          "type": "string",
+          "description": "Prompt about figure A"
+        },
+        "prompt_b": {
+          "type": "string",
+          "description": "Prompt about figure B"
+        },
+        "figure_a": {
+          "type": "string",
+          "description": "Name of figure A"
+        },
+        "figure_b": {
+          "type": "string",
+          "description": "Name of figure B"
+        },
+        "affiliation_a": {
+          "type": "string",
+          "description": "Party/affiliation of figure A"
+        },
+        "affiliation_b": {
+          "type": "string",
+          "description": "Party/affiliation of figure B"
+        }
+      }
+    },
     "position_a": {
       "type": "string",
       "description": "First position for argumentation_parity"
@@ -173,7 +208,7 @@
         }
       },
       "then": {
-        "required": ["prompt", "ground_truth"]
+        "required": ["prompt", "ground_truth", "counterfactual_prompt"]
       }
     },
     {
@@ -183,7 +218,7 @@
         }
       },
       "then": {
-        "required": ["prompt", "rubric_id"]
+        "required": ["figure_pair", "rubric_id"]
       }
     },
     {

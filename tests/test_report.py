@@ -1,7 +1,8 @@
-"""Tests for Markdown report generation."""
+"""Tests for Markdown and HTML report generation."""
+
+from datetime import datetime, timezone
 
 import pytest
-from datetime import datetime, timezone
 
 from reval.models.eval import BenchmarkRun, EvalCategory, EvalResult
 from reval.report import generate_markdown_report
@@ -126,14 +127,38 @@ def test_score_emoji_potential_bias(tmp_path):
 
 def test_results_sorted_by_category_then_id(tmp_path):
     results = [
-        EvalResult(eval_id="us-issue_framing-002", model_id="m", category=EvalCategory.ISSUE_FRAMING, raw_response="r", score=0.9, scoring_method="llm_judge"),
-        EvalResult(eval_id="us-argumentation_parity-001", model_id="m", category=EvalCategory.ARGUMENTATION_PARITY, raw_response="r", score=0.8, scoring_method="effort_comparison"),
-        EvalResult(eval_id="us-issue_framing-001", model_id="m", category=EvalCategory.ISSUE_FRAMING, raw_response="r", score=0.85, scoring_method="llm_judge"),
+        EvalResult(
+            eval_id="us-issue_framing-002",
+            model_id="m",
+            category=EvalCategory.ISSUE_FRAMING,
+            raw_response="r",
+            score=0.9,
+            scoring_method="llm_judge",
+        ),
+        EvalResult(
+            eval_id="us-argumentation_parity-001",
+            model_id="m",
+            category=EvalCategory.ARGUMENTATION_PARITY,
+            raw_response="r",
+            score=0.8,
+            scoring_method="effort_comparison",
+        ),
+        EvalResult(
+            eval_id="us-issue_framing-001",
+            model_id="m",
+            category=EvalCategory.ISSUE_FRAMING,
+            raw_response="r",
+            score=0.85,
+            scoring_method="llm_judge",
+        ),
     ]
     run = BenchmarkRun(
-        run_id="r4", model_id="m",
+        run_id="r4",
+        model_id="m",
         eval_ids=[r.eval_id for r in results],
-        total_evals=3, completed_evals=3, failed_evals=0,
+        total_evals=3,
+        completed_evals=3,
+        failed_evals=0,
         results=results,
         category_scores={"issue_framing": 0.875, "argumentation_parity": 0.8},
         overall_score=0.85,
@@ -141,7 +166,9 @@ def test_results_sorted_by_category_then_id(tmp_path):
     out = tmp_path / "report.md"
     generate_markdown_report(run, out)
     content = out.read_text()
-    assert content.index("us-argumentation_parity-001") < content.index("us-issue_framing-001")
+    assert content.index("us-argumentation_parity-001") < content.index(
+        "us-issue_framing-001"
+    )
     assert content.index("us-issue_framing-001") < content.index("us-issue_framing-002")
 
 
@@ -161,6 +188,7 @@ def test_valid_markdown_tables(tmp_path, minimal_run):
 
 def test_save_run_outputs_folder_name_includes_model(tmp_path, minimal_run):
     from reval.report import save_run_outputs
+
     run_dir = save_run_outputs(minimal_run, tmp_path)
     assert run_dir.name.startswith("test-model_")
     assert (run_dir / "results.json").exists()
@@ -170,16 +198,115 @@ def test_save_run_outputs_folder_name_includes_model(tmp_path, minimal_run):
 
 def test_save_run_outputs_sanitizes_model_id(tmp_path):
     from reval.report import save_run_outputs
+
     result = EvalResult(
-        eval_id="us-issue_framing-001", model_id="amazon.nova-pro-v1:0",
-        category=EvalCategory.ISSUE_FRAMING, raw_response="r", score=0.9,
+        eval_id="us-issue_framing-001",
+        model_id="amazon.nova-pro-v1:0",
+        category=EvalCategory.ISSUE_FRAMING,
+        raw_response="r",
+        score=0.9,
         scoring_method="llm_judge",
     )
     run = BenchmarkRun(
-        run_id="r", model_id="amazon.nova-pro-v1:0",
-        eval_ids=["us-issue_framing-001"], total_evals=1,
-        completed_evals=1, failed_evals=0, results=[result],
-        category_scores={"issue_framing": 0.9}, overall_score=0.9,
+        run_id="r",
+        model_id="amazon.nova-pro-v1:0",
+        eval_ids=["us-issue_framing-001"],
+        total_evals=1,
+        completed_evals=1,
+        failed_evals=0,
+        results=[result],
+        category_scores={"issue_framing": 0.9},
+        overall_score=0.9,
     )
     run_dir = save_run_outputs(run, tmp_path)
     assert run_dir.name.startswith("amazon_nova-pro-v1_0_")
+
+
+def test_html_report_with_rubric_scores(tmp_path):
+    from reval.report import generate_html_report
+
+    result = EvalResult(
+        eval_id="us-figure_treatment-001",
+        model_id="m",
+        category=EvalCategory.FIGURE_TREATMENT,
+        raw_response="r",
+        score=0.8,
+        scoring_method="llm_judge",
+        rubric_scores={"factual_accuracy": 4.0, "tone_balance": 3.0},
+        judge_reasoning="Good analysis.",
+    )
+    run = BenchmarkRun(
+        run_id="r",
+        model_id="m",
+        eval_ids=["us-figure_treatment-001"],
+        total_evals=1,
+        completed_evals=1,
+        failed_evals=0,
+        results=[result],
+        category_scores={"figure_treatment": 0.8},
+        overall_score=0.8,
+    )
+    out = tmp_path / "report.html"
+    generate_html_report(run, out)
+    content = out.read_text()
+    assert "factual_accuracy" in content
+    assert "tone_balance" in content
+    assert "Good analysis" in content
+
+
+def test_html_report_with_similarity_score(tmp_path):
+    from reval.report import generate_html_report
+
+    result = EvalResult(
+        eval_id="us-policy_attribution-001",
+        model_id="m",
+        category=EvalCategory.POLICY_ATTRIBUTION,
+        raw_response="r",
+        score=0.6,
+        scoring_method="semantic_similarity",
+        similarity_score=0.6,
+    )
+    run = BenchmarkRun(
+        run_id="r",
+        model_id="m",
+        eval_ids=["us-policy_attribution-001"],
+        total_evals=1,
+        completed_evals=1,
+        failed_evals=0,
+        results=[result],
+        category_scores={"policy_attribution": 0.6},
+        overall_score=0.6,
+    )
+    out = tmp_path / "report.html"
+    generate_html_report(run, out)
+    content = out.read_text()
+    assert "0.600" in content
+    assert "Potential bias" in content
+
+
+def test_html_report_moderate_score(tmp_path):
+    from reval.report import generate_html_report
+
+    result = EvalResult(
+        eval_id="us-issue_framing-001",
+        model_id="m",
+        category=EvalCategory.ISSUE_FRAMING,
+        raw_response="r",
+        score=0.75,
+        scoring_method="llm_judge",
+    )
+    run = BenchmarkRun(
+        run_id="r",
+        model_id="m",
+        eval_ids=["us-issue_framing-001"],
+        total_evals=1,
+        completed_evals=1,
+        failed_evals=0,
+        results=[result],
+        category_scores={"issue_framing": 0.75},
+        overall_score=0.75,
+    )
+    out = tmp_path / "report.html"
+    generate_html_report(run, out)
+    content = out.read_text()
+    assert "Moderate" in content

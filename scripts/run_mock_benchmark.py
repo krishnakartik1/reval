@@ -6,18 +6,16 @@ Useful for testing the framework before connecting to AWS.
 
 import asyncio
 import hashlib
-import json
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import numpy as np
 
 # Make sure the package is importable when run from the repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from reval.runner import EvalRunner, load_evals_from_directory
 from reval.models.eval import Country
+from reval.runner import EvalRunner, load_evals_from_directory
 
 # ---------------------------------------------------------------------------
 # Mock responses — varied enough to produce interesting scores
@@ -124,15 +122,18 @@ def fake_embedding(text: str) -> np.ndarray:
 # Patch factories
 # ---------------------------------------------------------------------------
 
+
 def make_model_generate():
     async def generate(self, prompt: str) -> tuple[str, int]:
         return mock_response(prompt), 42  # 42ms fake latency
+
     return generate
 
 
 def make_get_embedding():
     async def get_embedding(self, text: str) -> np.ndarray:
         return fake_embedding(text)
+
     return get_embedding
 
 
@@ -146,32 +147,47 @@ def make_judge_evaluate():
             scores[criterion.name] = 3 + (seed % 3)
             seed = (seed * 31 + 7) % 100
         reasoning = (
-            f"Mock judge evaluation. Response addresses the prompt with "
-            f"reasonable balance and appropriate framing."
+            "Mock judge evaluation. Response addresses the prompt with "
+            "reasonable balance and appropriate framing."
         )
         return scores, reasoning
+
     return evaluate
 
 
 def make_parity_evaluate():
     async def evaluate(self, position_a, position_b, response_a, response_b):
-        seed = int(
-            hashlib.md5((position_a + position_b).encode()).hexdigest(), 16
-        ) % 100
+        seed = (
+            int(hashlib.md5((position_a + position_b).encode()).hexdigest(), 16) % 100
+        )
         # Parity score 0.75-0.95 — mostly fair with some variance
         parity_score = 0.75 + (seed % 20) / 100
         metrics = {
-            "position_a": {"depth": 4, "rhetoric": 3, "evidence": 4, "nuance": 3, "word_count": 85},
-            "position_b": {"depth": 4, "rhetoric": 4, "evidence": 3, "nuance": 4, "word_count": 90},
+            "position_a": {
+                "depth": 4,
+                "rhetoric": 3,
+                "evidence": 4,
+                "nuance": 3,
+                "word_count": 85,
+            },
+            "position_b": {
+                "depth": 4,
+                "rhetoric": 4,
+                "evidence": 3,
+                "nuance": 4,
+                "word_count": 90,
+            },
         }
         reasoning = "Both positions argued with comparable depth and evidence quality."
         return parity_score, metrics, reasoning
+
     return evaluate
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     dataset_dir = Path(__file__).parent.parent / "evals" / "datasets"
@@ -181,10 +197,10 @@ def main():
     print("(No AWS credentials required — all responses are simulated)\n")
 
     # Patch all Bedrock calls before importing runner internals
-    from reval.utils.embeddings import BedrockEmbeddings
+    from reval.runner import ModelClient
     from reval.scoring.judge import BedrockJudge
     from reval.scoring.parity import ParityJudge
-    from reval.runner import ModelClient
+    from reval.utils.embeddings import BedrockEmbeddings
 
     ModelClient.generate = make_model_generate()
     BedrockEmbeddings.get_embedding = make_get_embedding()
@@ -206,7 +222,9 @@ def main():
     def on_result(result):
         completed.append(result)
         status = "✓" if result.score >= 0.7 else "✗"
-        print(f"  {status}  {result.eval_id:<40}  score={result.score:.3f}  [{result.scoring_method}]")
+        print(
+            f"  {status}  {result.eval_id:<40}  score={result.score:.3f}  [{result.scoring_method}]"
+        )
 
     benchmark_run = asyncio.run(runner.run_benchmark(evals, on_result))
 
@@ -226,11 +244,14 @@ def main():
     print("─" * 60)
     if benchmark_run.overall_score is not None:
         print(f"  {'Overall':<28} {benchmark_run.overall_score:>8.3f}")
-    print(f"\nCompleted: {benchmark_run.completed_evals}/{benchmark_run.total_evals}  "
-          f"Failed: {benchmark_run.failed_evals}")
+    print(
+        f"\nCompleted: {benchmark_run.completed_evals}/{benchmark_run.total_evals}  "
+        f"Failed: {benchmark_run.failed_evals}"
+    )
+
+    import webbrowser
 
     from reval.report import save_run_outputs
-    import webbrowser
 
     results_dir = Path(__file__).parent.parent / "results"
     run_dir = save_run_outputs(benchmark_run, results_dir, run_name="mock_run")

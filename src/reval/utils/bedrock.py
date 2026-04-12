@@ -4,8 +4,6 @@ Centralises the per-provider format differences so that callers only need
 to supply model_id, prompt, and optional parameters.
 """
 
-import json
-
 
 def build_request_body(
     model_id: str,
@@ -38,9 +36,7 @@ def build_request_body(
 
     if _is_nova(model_id):
         body = {
-            "messages": [
-                {"role": "user", "content": [{"text": prompt}]}
-            ],
+            "messages": [{"role": "user", "content": [{"text": prompt}]}],
             "inferenceConfig": {"maxTokens": max_tokens},
         }
         if system_prompt:
@@ -54,7 +50,9 @@ def build_request_body(
         }
         if system_prompt:
             # Llama uses a combined prompt with system prefix
-            body["prompt"] = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n\n{prompt} [/INST]"
+            body["prompt"] = (
+                f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n\n{prompt} [/INST]"
+            )
         return body
 
     if _is_titan(model_id):
