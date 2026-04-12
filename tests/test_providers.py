@@ -12,7 +12,7 @@ These tests mock the session so no AWS calls happen and verify:
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -69,10 +69,14 @@ async def test_acomplete_reraises_throttle_as_rate_limit() -> None:
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=None)
 
-    class ThrottlingException(Exception):
-        pass
+    # BedrockProvider identifies throttling by the exception class name;
+    # the real one is an AWS `botocore.exceptions.ClientError` subclass
+    # named `ThrottlingException`. We mint a stand-in with the same
+    # runtime class name so the heuristic matches without importing
+    # botocore in a unit test.
+    fake_throttle = type("ThrottlingException", (Exception,), {})
 
-    client.invoke_model = AsyncMock(side_effect=ThrottlingException("Slow down"))
+    client.invoke_model = AsyncMock(side_effect=fake_throttle("Slow down"))
     session.client = MagicMock(return_value=client)
 
     provider = BedrockProvider(model_id="any-model-id", session=session)

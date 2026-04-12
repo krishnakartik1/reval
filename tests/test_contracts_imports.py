@@ -15,7 +15,6 @@ import subprocess
 import sys
 import textwrap
 
-
 FORBIDDEN = ["aioboto3", "boto3", "numpy", "jsonlines", "httpx", "anthropic", "openai"]
 
 
