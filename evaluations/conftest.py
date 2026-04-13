@@ -38,7 +38,9 @@ def _is_ollama_running(host: str = "localhost", port: int = 11434) -> bool:
         return False
 
 
-def _ollama_has_model(model_name: str, host: str = "localhost", port: int = 11434) -> bool:
+def _ollama_has_model(
+    model_name: str, host: str = "localhost", port: int = 11434
+) -> bool:
     """Return True if Ollama has `model_name` pulled locally.
 
     Queries `/api/tags` and checks the installed model list. Tolerates

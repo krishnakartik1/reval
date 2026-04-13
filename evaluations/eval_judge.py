@@ -78,13 +78,11 @@ def _assert_valid_judge_result(
     reasoning: str,
 ) -> None:
     """Shared assertion shape for every judge backend."""
-    assert isinstance(scores, dict) and scores, (
-        f"judge returned empty/invalid scores: {scores}"
-    )
+    assert (
+        isinstance(scores, dict) and scores
+    ), f"judge returned empty/invalid scores: {scores}"
     for name, score in scores.items():
-        assert 1 <= score <= 5, (
-            f"criterion {name!r} has out-of-range score {score}"
-        )
+        assert 1 <= score <= 5, f"criterion {name!r} has out-of-range score {score}"
     assert reasoning and reasoning.strip(), "judge reasoning is empty"
 
 
@@ -211,9 +209,7 @@ class TestOllamaEmbeddingsReal:
     @pytest.mark.eval
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("ollama_available")
-    async def test_get_embedding_returns_vector(
-        self, require_ollama_model
-    ) -> None:
+    async def test_get_embedding_returns_vector(self, require_ollama_model) -> None:
         """Ollama's /api/embeddings returns a usable numpy vector."""
         require_ollama_model("nomic-embed-text")
         import numpy as np

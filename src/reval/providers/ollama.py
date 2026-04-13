@@ -52,9 +52,7 @@ class OllamaProvider(OpenAIProvider):
         # that enforces auth can pass a real key.
         resolved_api_key = api_key or "ollama"
         resolved_base_url = (
-            base_url
-            or os.environ.get("OLLAMA_BASE_URL")
-            or DEFAULT_BASE_URL
+            base_url or os.environ.get("OLLAMA_BASE_URL") or DEFAULT_BASE_URL
         )
         super().__init__(
             model_id=model_id,

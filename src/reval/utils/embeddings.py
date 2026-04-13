@@ -103,9 +103,7 @@ class OllamaEmbeddingsProvider(Embeddings):
     ) -> None:
         self.model_id = model_id
         raw_base = (
-            base_url
-            or os.environ.get("OLLAMA_BASE_URL")
-            or "http://localhost:11434"
+            base_url or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
         )
         # Strip the OpenAI-compat `/v1` suffix if present — Ollama's
         # embeddings endpoint lives at /api/embeddings on the root.
@@ -146,9 +144,7 @@ def embeddings_from_config(
     if provider_name == "ollama":
         # Filter out any Bedrock-only kwargs the CLI might pass
         # unconditionally (e.g. `region`).
-        ollama_kwargs = {
-            k: v for k, v in kwargs.items() if k in {"base_url", "client"}
-        }
+        ollama_kwargs = {k: v for k, v in kwargs.items() if k in {"base_url", "client"}}
         return OllamaEmbeddingsProvider(model_id=model_id, **ollama_kwargs)
     raise ValueError(
         f"Unsupported embeddings provider {provider_name!r}; "

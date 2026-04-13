@@ -46,9 +46,7 @@ class TestBedrockEmbeddingsProvider:
         assert provider.model_id == "amazon.titan-embed-text-v2:0"
 
     def test_respects_explicit_model_id(self) -> None:
-        provider = BedrockEmbeddingsProvider(
-            model_id="amazon.titan-embed-text-v1"
-        )
+        provider = BedrockEmbeddingsProvider(model_id="amazon.titan-embed-text-v1")
         assert provider.model_id == "amazon.titan-embed-text-v1"
 
 
@@ -84,9 +82,7 @@ class TestOllamaEmbeddingsProvider:
         provider = OllamaEmbeddingsProvider()
         assert provider.base_url == "http://remote:9999"
 
-    def test_base_url_arg_overrides_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_base_url_arg_overrides_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OLLAMA_BASE_URL", "http://ignored:1111")
         provider = OllamaEmbeddingsProvider(base_url="http://explicit:2222")
         assert provider.base_url == "http://explicit:2222"
@@ -98,9 +94,7 @@ class TestOllamaEmbeddingsProvider:
     @pytest.mark.asyncio
     async def test_get_embedding_returns_numpy_array(self) -> None:
         client = _mock_httpx_client([0.1, 0.2, 0.3])
-        provider = OllamaEmbeddingsProvider(
-            model_id="nomic-embed-text", client=client
-        )
+        provider = OllamaEmbeddingsProvider(model_id="nomic-embed-text", client=client)
         result = await provider.get_embedding("hello")
         assert isinstance(result, np.ndarray)
         assert result.tolist() == pytest.approx([0.1, 0.2, 0.3])
@@ -126,9 +120,7 @@ class TestOllamaEmbeddingsProvider:
     async def test_get_embeddings_batch_via_default_impl(self) -> None:
         """`get_embeddings` fans out via `get_embedding` per the ABC default."""
         client = _mock_httpx_client([0.5, 0.5])
-        provider = OllamaEmbeddingsProvider(
-            model_id="nomic-embed-text", client=client
-        )
+        provider = OllamaEmbeddingsProvider(model_id="nomic-embed-text", client=client)
         results = await provider.get_embeddings(["one", "two", "three"])
         assert len(results) == 3
         for r in results:
@@ -153,19 +145,13 @@ class TestEmbeddingsFromConfig:
         )
         assert instance.region == "us-west-2"
 
-    def test_ollama_dispatch(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_ollama_dispatch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
-        instance = embeddings_from_config(
-            "ollama", model_id="nomic-embed-text"
-        )
+        instance = embeddings_from_config("ollama", model_id="nomic-embed-text")
         assert isinstance(instance, OllamaEmbeddingsProvider)
         assert instance.model_id == "nomic-embed-text"
 
-    def test_ollama_ignores_region_kwarg(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_ollama_ignores_region_kwarg(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """CLI passes `region` unconditionally; Ollama backend must drop it.
 
         Regression guard: the old behavior would have crashed with an
