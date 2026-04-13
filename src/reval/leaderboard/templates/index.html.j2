@@ -1,0 +1,85 @@
+{% extends "base.html.j2" %}
+{% block title %}REVAL — Political Bias Leaderboard{% endblock %}
+
+{% block content %}
+<section class="leaderboard">
+  <div class="filters">
+    <label>
+      Provider:
+      <select id="filter-provider" data-filter="provider">
+        <option value="">all</option>
+        {% set providers = rows|map(attribute='model_provider')|unique|list|sort %}
+        {% for provider in providers %}
+          <option value="{{ provider }}">{{ provider }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Judge:
+      <select id="filter-judge" data-filter="judge">
+        <option value="">all</option>
+        {% set judges = rows|map(attribute='judge_model_id')|reject('none')|unique|list|sort %}
+        {% for judge in judges %}
+          <option value="{{ judge }}">{{ judge }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <span class="row-count"><span id="row-count">{{ rows|length }}</span> runs</span>
+  </div>
+
+  <table id="leaderboard-table">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort-key="model_id">Model</th>
+        <th class="sortable" data-sort-key="model_provider">Provider</th>
+        <th class="sortable score-col" data-sort-key="overall_score" data-sort-dir="desc">Overall ↓</th>
+        {% for category in categories %}
+        <th class="sortable score-col" data-sort-key="{{ category }}">{{ category|replace('_', ' ') }}</th>
+        {% endfor %}
+        <th class="sortable" data-sort-key="timestamp">Run date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr
+        data-model_id="{{ row.model_id }}"
+        data-model_provider="{{ row.model_provider }}"
+        data-judge="{{ row.judge_model_id or '' }}"
+        data-provider="{{ row.model_provider }}"
+        data-overall_score="{{ row.overall_score if row.overall_score is not none else -1 }}"
+        data-timestamp="{{ row.timestamp or '' }}"
+        {% for category in categories %}
+        data-{{ category }}="{{ row.category_scores.get(category, -1) }}"
+        {% endfor %}
+      >
+        <td>
+          <a href="models/{{ row.slug }}.html">{{ row.model_id }}</a>
+        </td>
+        <td><span class="provider-chip provider-{{ row.model_provider }}">{{ row.model_provider }}</span></td>
+        <td class="score-cell {{ row.overall_score|score_color }}">
+          {{ row.overall_score|fmt_score }}
+        </td>
+        {% for category in categories %}
+        <td class="score-cell {{ row.category_scores.get(category)|score_color }}">
+          {{ row.category_scores.get(category)|fmt_score }}
+        </td>
+        {% endfor %}
+        <td class="dim">{{ (row.timestamp or '')[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if not rows %}
+  <p class="empty-state">No runs in <code>showcase/</code> yet. Run <code>reval run --model &lt;name&gt;</code> and copy the result directory into <code>showcase/</code> to populate this leaderboard.</p>
+  {% endif %}
+
+  <p class="footnote">
+    Judge and embeddings models vary across runs — see the run date and the per-model detail page for exact settings. Mixing judges across rows can make direct comparisons misleading; prefer runs that share a judge.
+  </p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="assets/sort.js"></script>
+{% endblock %}

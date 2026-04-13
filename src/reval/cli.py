@@ -25,11 +25,19 @@ _DEFAULT_DATASET = _REPO_ROOT / "evals" / "datasets"
 _DEFAULT_SCHEMA = _REPO_ROOT / "evals" / "schema.json"
 _DEFAULT_RUBRICS = _REPO_ROOT / "evals" / "rubrics"
 _DEFAULT_CONFIG = _REPO_ROOT / "evals" / "config.yaml"
+_DEFAULT_SHOWCASE = _REPO_ROOT / "showcase"
+_DEFAULT_LEADERBOARD_OUTPUT = _REPO_ROOT / "public"
 
 app = typer.Typer(
     name="reval",
     help="REVAL - Robust Evaluation of Values and Alignment in LLMs",
 )
+leaderboard_app = typer.Typer(
+    name="leaderboard",
+    help="Generate and manage the static REVAL leaderboard site.",
+    no_args_is_help=True,
+)
+app.add_typer(leaderboard_app, name="leaderboard")
 console = Console()
 
 
@@ -336,6 +344,60 @@ def list_evals(
             table.add_row(country_name, cat_name, str(count))
 
     console.print(table)
+
+
+# ── Leaderboard subcommands ────────────────────────────────────────────
+
+
+@leaderboard_app.command("build")
+def leaderboard_build(
+    showcase: Path = typer.Option(
+        _DEFAULT_SHOWCASE,
+        "--showcase",
+        "-s",
+        help="Directory containing <run>/results.json entries (default: showcase/)",
+    ),
+    output: Path = typer.Option(
+        _DEFAULT_LEADERBOARD_OUTPUT,
+        "--output",
+        "-o",
+        help="Destination directory for the static site (default: public/)",
+    ),
+    include_reports: bool = typer.Option(
+        True,
+        "--include-reports/--no-include-reports",
+        help="Copy each showcase entry's report.html into public/reports/",
+    ),
+) -> None:
+    """Render the static leaderboard site from `showcase/*/results.json`.
+
+    Output is a self-contained directory of HTML + JSON + assets ready
+    for SFTP/rsync to any static host (e.g. Hostinger `public_html/`).
+    """
+    from reval.leaderboard import build, load_rows
+
+    if not showcase.exists():
+        console.print(f"[red]Showcase directory not found: {showcase}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]Loading runs from {showcase}...[/cyan]")
+    rows = load_rows(showcase)
+    if not rows:
+        console.print(
+            f"[yellow]No results.json files under {showcase}/. Run "
+            "`reval run` first, then copy result directories into "
+            "showcase/ to populate the leaderboard.[/yellow]"
+        )
+        # Still emit the empty site so preview works.
+    else:
+        console.print(f"Found [green]{len(rows)}[/green] runs.")
+
+    build(showcase_dir=showcase, output_dir=output, include_reports=include_reports)
+    console.print(f"\n[green]Static site written to {output}/[/green]")
+    console.print(f"[green]Preview: [/green]python -m http.server --directory {output}")
+    console.print(
+        f"[green]Deploy:  [/green]rsync -avz {output}/ user@host:public_html/"
+    )
 
 
 if __name__ == "__main__":
