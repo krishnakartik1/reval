@@ -265,7 +265,7 @@ def run(
 
     from reval.report import save_run_outputs
 
-    run_dir = save_run_outputs(benchmark_run, output)
+    run_dir = save_run_outputs(benchmark_run, output, evals=evals)
     console.print(f"\n[green]Results saved to {run_dir}/[/green]")
     console.print(f"[green]HTML report: {run_dir / 'report.html'}[/green]")
     console.print(f"[green]Markdown report: {run_dir / 'report.md'}[/green]")

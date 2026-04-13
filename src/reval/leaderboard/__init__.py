@@ -11,6 +11,6 @@ entry point for callers that want to invoke the generator
 programmatically (used by the deferred `reval-webui` plan).
 """
 
-from reval.leaderboard.build import LeaderboardRow, build, load_rows
+from reval.leaderboard.build import LeaderboardRow, build, get_style_css, load_rows
 
-__all__ = ["LeaderboardRow", "build", "load_rows"]
+__all__ = ["LeaderboardRow", "build", "get_style_css", "load_rows"]
