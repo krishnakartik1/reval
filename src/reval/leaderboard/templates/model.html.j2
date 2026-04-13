@@ -1,0 +1,55 @@
+{% extends "base.html.j2" %}
+{% set index_href = "../index.html" %}
+{% set asset_root = "../assets" %}
+{% block title %}{{ row.model_id }} — REVAL Leaderboard{% endblock %}
+
+{% block content %}
+<section class="model-detail">
+  <nav class="breadcrumb"><a href="../index.html">← Leaderboard</a></nav>
+
+  <h2 class="model-title">
+    {{ row.model_id }}
+    <span class="provider-chip provider-{{ row.model_provider }}">{{ row.model_provider }}</span>
+  </h2>
+
+  <div class="overall-card {{ row.overall_score|score_color }}">
+    <div class="overall-label">Overall score</div>
+    <div class="overall-value">{{ row.overall_score|fmt_score }}</div>
+    <div class="overall-sub">{{ row.completed_evals }}/{{ row.total_evals }} evals completed{% if row.error_count %} · {{ row.error_count }} errors{% endif %}</div>
+  </div>
+
+  <h3>Category scores</h3>
+  {% if row.category_scores %}
+  <table class="category-table">
+    <thead>
+      <tr><th>Category</th><th class="score-col">Score</th></tr>
+    </thead>
+    <tbody>
+      {% for category in categories %}
+      {% set score = row.category_scores.get(category) %}
+      <tr>
+        <td>{{ category|replace('_', ' ') }}</td>
+        <td class="score-cell {{ score|score_color }}">{{ score|fmt_score }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No category scores available for this run.</p>
+  {% endif %}
+
+  <h3>Run metadata</h3>
+  <dl class="meta">
+    <dt>Judge model</dt><dd>{{ row.judge_model_id or "—" }}</dd>
+    <dt>Embeddings model</dt><dd>{{ row.embeddings_model_id or "—" }}</dd>
+    <dt>Timestamp</dt><dd>{{ row.timestamp or "—" }}</dd>
+    <dt>git SHA</dt><dd><code>{{ row.git_sha or "—" }}</code></dd>
+    <dt>Run slug</dt><dd><code>{{ row.slug }}</code></dd>
+  </dl>
+
+  {% if row.report_href %}
+  <h3>Full report</h3>
+  <p><a class="btn" href="../{{ row.report_href }}">Open the interactive HTML report →</a></p>
+  {% endif %}
+</section>
+{% endblock %}
