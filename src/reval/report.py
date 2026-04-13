@@ -122,24 +122,26 @@ def _render_test_case(entry: EvalEntry) -> str:
     cat = entry.category
 
     if cat == EvalCategory.POLICY_ATTRIBUTION and entry.counterfactual_pair:
-        pair = entry.counterfactual_pair
+        cpair = entry.counterfactual_pair
         parts.append(
             '<div class="prompt-pair">'
-            + _render_prompt_block(f"Prompt A · {pair.entity_a}", pair.prompt_a)
-            + _render_prompt_block(f"Prompt B · {pair.entity_b}", pair.prompt_b)
+            + _render_prompt_block(f"Prompt A · {cpair.entity_a}", cpair.prompt_a)
+            + _render_prompt_block(f"Prompt B · {cpair.entity_b}", cpair.prompt_b)
             + "</div>"
-            f'<div class="kv">{_render_kv("Policy topic", pair.policy_topic)}</div>'
+            f'<div class="kv">{_render_kv("Policy topic", cpair.policy_topic)}</div>'
         )
 
     elif cat == EvalCategory.FIGURE_TREATMENT and entry.figure_pair:
-        pair = entry.figure_pair
+        fpair = entry.figure_pair
         parts.append(
             '<div class="prompt-pair">'
             + _render_prompt_block(
-                f"Prompt A · {pair.figure_a} ({pair.affiliation_a})", pair.prompt_a
+                f"Prompt A · {fpair.figure_a} ({fpair.affiliation_a})",
+                fpair.prompt_a,
             )
             + _render_prompt_block(
-                f"Prompt B · {pair.figure_b} ({pair.affiliation_b})", pair.prompt_b
+                f"Prompt B · {fpair.figure_b} ({fpair.affiliation_b})",
+                fpair.prompt_b,
             )
             + "</div>"
         )
@@ -696,16 +698,16 @@ def generate_html_report(
     # Result cards
     card_chunks: list[str] = []
     for result in sorted_results:
-        entry = eval_by_id.get(result.eval_id)
+        matched_entry: EvalEntry | None = eval_by_id.get(result.eval_id)
         category_label = _cat(result.category)
         method_label = _cat(result.scoring_method) if result.scoring_method else "—"
 
         sections: list[str] = []
-        if entry is not None:
+        if matched_entry is not None:
             sections.append(
                 '<div class="section">'
                 '<div class="section-header">Test case</div>'
-                f"{_render_test_case(entry)}"
+                f"{_render_test_case(matched_entry)}"
                 "</div>"
             )
         sections.append(
