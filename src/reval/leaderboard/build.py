@@ -158,6 +158,17 @@ def _assets_dir() -> Path:
         return Path(__file__).parent / "assets"
 
 
+def get_style_css() -> str:
+    """Return the leaderboard `style.css` contents as a string.
+
+    Public helper so `reval.report.generate_html_report` can inline the
+    same CSS palette into individual run reports without duplicating the
+    file. Keeps the leaderboard + reports visually in sync — edit
+    `leaderboard/assets/style.css` once, both surfaces update.
+    """
+    return (_assets_dir() / "style.css").read_text(encoding="utf-8")
+
+
 def build(
     showcase_dir: Path,
     output_dir: Path,
