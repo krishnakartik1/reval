@@ -11,6 +11,7 @@ from reval.contracts.provider import LLMProvider
 from reval.providers.anthropic_direct import AnthropicProvider
 from reval.providers.bedrock import BedrockProvider
 from reval.providers.minimax import MinimaxProvider
+from reval.providers.ollama import OllamaProvider
 from reval.providers.openai_compat import OpenAIProvider
 
 _REGISTRY: dict[str, type[LLMProvider]] = {
@@ -18,6 +19,7 @@ _REGISTRY: dict[str, type[LLMProvider]] = {
     "anthropic": AnthropicProvider,
     "minimax": MinimaxProvider,
     "openai": OpenAIProvider,
+    "ollama": OllamaProvider,
 }
 
 

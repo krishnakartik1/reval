@@ -1,13 +1,19 @@
 """Utility functions for REVAL."""
 
 from reval.utils.embeddings import (
-    BedrockEmbeddings,
+    BedrockEmbeddingsProvider,
+    Embeddings,
+    OllamaEmbeddingsProvider,
     compute_semantic_similarity,
     cosine_similarity,
+    embeddings_from_config,
 )
 
 __all__ = [
-    "BedrockEmbeddings",
+    "BedrockEmbeddingsProvider",
+    "Embeddings",
+    "OllamaEmbeddingsProvider",
     "compute_semantic_similarity",
     "cosine_similarity",
+    "embeddings_from_config",
 ]
