@@ -413,12 +413,41 @@ def leaderboard_build(
         else:
             console.print(f"[cyan]Regenerating reports against {dataset_dir}...[/cyan]")
 
-    build(
+    report = build(
         showcase_dir=showcase,
         output_dir=output,
         include_reports=include_reports,
         dataset_dir=dataset_dir,
     )
+
+    if report.partial_matches:
+        console.print(
+            "\n[yellow]⚠ Dataset drift: some eval IDs in these runs are no "
+            "longer in the dataset. Cards for missing IDs will render "
+            "without a Test case section:[/yellow]"
+        )
+        for slug, matched_count, total_count in report.partial_matches:
+            console.print(
+                f"  [yellow]•[/yellow] {slug}: "
+                f"[bold]{matched_count}/{total_count}[/bold] prompts found"
+            )
+
+    if report.unmatched_copied:
+        console.print(
+            "\n[yellow]⚠ Zero dataset matches — falling back to the verbatim "
+            "showcase/<slug>/report.html, which may be stale:[/yellow]"
+        )
+        for slug in report.unmatched_copied:
+            console.print(f"  [yellow]•[/yellow] {slug}")
+
+    if report.unmatched_missing:
+        console.print(
+            "\n[red]✗ Zero dataset matches AND no showcase report.html to fall "
+            "back to — no per-run report published for:[/red]"
+        )
+        for slug in report.unmatched_missing:
+            console.print(f"  [red]•[/red] {slug}")
+
     console.print(f"\n[green]Static site written to {output}/[/green]")
     console.print(f"[green]Preview: [/green]python -m http.server --directory {output}")
     console.print(

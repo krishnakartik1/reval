@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
@@ -38,6 +39,29 @@ from pydantic import BaseModel, Field
 #: Currently unused (every row is a distinct run), but reserved for a
 #: future "show N most recent runs per model" filter.
 _MAX_ROWS_PER_MODEL = 10
+
+
+@dataclass
+class BuildReport:
+    """Diagnostic counters emitted by `build()` for the CLI to print.
+
+    Only populated when `dataset_dir` is provided to `build()`. With no
+    dataset, every per-run report is a verbatim copy of the showcase
+    `report.html` and drift can't be measured.
+    """
+
+    #: Slugs where some (but not all) eval IDs from the run still exist
+    #: in the current dataset. Tuple: (slug, matched_count, total_count).
+    #: Cards for the missing IDs render without a Test case section.
+    partial_matches: list[tuple[str, int, int]] = field(default_factory=list)
+
+    #: Slugs with zero dataset matches where we fell back to copying
+    #: `showcase/<slug>/report.html`. The copy may be stale.
+    unmatched_copied: list[str] = field(default_factory=list)
+
+    #: Slugs with zero dataset matches AND no showcase `report.html` to
+    #: fall back to — no per-run report is published at all.
+    unmatched_missing: list[str] = field(default_factory=list)
 
 
 class LeaderboardRow(BaseModel):
@@ -204,7 +228,7 @@ def build(
     output_dir: Path,
     include_reports: bool = True,
     dataset_dir: Path | None = None,
-) -> None:
+) -> BuildReport:
     """Render the static leaderboard site.
 
     Args:
@@ -226,6 +250,8 @@ def build(
             verbatim copy of `showcase/<slug>/report.html` (old
             behavior, kept as a fallback when no dataset is available).
     """
+    build_report = BuildReport()
+
     rows = load_rows(showcase_dir)
     categories = _collect_categories(rows)
     avg_scores = _average_category_scores(rows, categories)
@@ -311,7 +337,9 @@ def build(
         reports_dir.mkdir(exist_ok=True)
 
         matched_evals_by_slug: dict[str, list] = {}
-        if dataset_dir is not None and dataset_dir.exists():
+        eval_ids_by_slug: dict[str, list[str]] = {}
+        dataset_provided = dataset_dir is not None and dataset_dir.exists()
+        if dataset_provided and dataset_dir is not None:
             # Lazy import — `reval.runner` pulls in provider / judge
             # SDKs, which `reval leaderboard build` would otherwise
             # have no reason to load. Importing inside `build()`
@@ -330,6 +358,7 @@ def build(
                 except (OSError, json.JSONDecodeError):
                     continue
                 eval_ids = run_data.get("eval_ids", [])
+                eval_ids_by_slug[row.slug] = eval_ids
                 matched = [eval_by_id[eid] for eid in eval_ids if eid in eval_by_id]
                 if matched:
                     matched_evals_by_slug[row.slug] = matched
@@ -351,14 +380,30 @@ def build(
                         run_data = json.load(f)
                     run = BenchmarkRun.model_validate(run_data)
                     generate_html_report(run, dest, evals=matched_for_row)
+                    total_ids = len(eval_ids_by_slug.get(row.slug, []))
+                    if total_ids > len(matched_for_row):
+                        build_report.partial_matches.append(
+                            (row.slug, len(matched_for_row), total_ids)
+                        )
                     continue
                 except Exception:  # noqa: BLE001
                     # Fall through to copy on any rendering error so a
                     # single broken run doesn't kill the whole build.
                     pass
 
+            # Track drift only when a dataset was provided AND the run
+            # had eval_ids to check against. Legacy runs without
+            # `eval_ids` predate the tracking and aren't "drift".
+            if dataset_provided and eval_ids_by_slug.get(row.slug):
+                if src_report.exists():
+                    build_report.unmatched_copied.append(row.slug)
+                else:
+                    build_report.unmatched_missing.append(row.slug)
+
             if src_report.exists():
                 shutil.copy2(src_report, dest)
+
+    return build_report
 
 
 # ── Template filters ────────────────────────────────────────────────────
