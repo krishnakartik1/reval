@@ -1,0 +1,154 @@
+/* REVAL — brand tokens
+ * Archival Data Journalism aesthetic: warm parchment, rust accent,
+ * variable serif display type, desaturated score bands. These are
+ * CSS custom properties that both the static leaderboard (public/)
+ * and the per-run reports (results/<run>/report.html) consume.
+ *
+ * Variable NAMES match the previous `style.css` palette so that
+ * `reval.report.generate_html_report` continues working via
+ * `get_style_css()` without any changes. Only the VALUES shift to the
+ * new warm palette.
+ */
+
+:root {
+  /* ── Surface ─────────────────────────────────────────────── */
+  --bg:          #faf8f3;    /* parchment, warm white */
+  --bg-alt:      #f4f0e6;    /* slightly deeper, for zebra + cards */
+  --fg:          #1a1a1a;    /* near-black ink */
+  --fg-dim:      #6b6660;    /* dimmed body copy, warm grey */
+  --border:      #d9d3c3;    /* hairline rule */
+  --border-soft: #ebe6d6;    /* subtler rule for zebra + row divs */
+
+  /* ── Accent — rust/umber, unexpected for a data app ────────── */
+  --accent:       #a85c32;
+  --accent-2:     #c76d3c;
+  --accent-tint:  #f4e3d4;
+
+  /* ── Score bands — desaturated, sit naturally on parchment ─── */
+  --score-high-bg: #dce9df;
+  --score-high-fg: #2d7a4f;
+  --score-mid-bg:  #efe3c9;
+  --score-mid-fg:  #b77821;
+  --score-low-bg:  #f0d8d8;
+  --score-low-fg:  #a83032;
+  --score-none-bg: #ebe7dd;
+  --score-none-fg: #9c958a;
+
+  /* ── Provider chip tints ─────────────────────────────────── */
+  --chip-bedrock:   #fef3c7;
+  --chip-anthropic: #ede9fe;
+  --chip-openai:    #dcfce7;
+  --chip-minimax:   #dbeafe;
+  --chip-ollama:    #fce7f3;
+
+  /* ── Typography ──────────────────────────────────────────── */
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-body:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── Spacing scale (8px base) ─────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --sp-9: 96px;
+
+  --radius:    4px;
+  --radius-lg: 8px;
+
+  --dur:  180ms;
+  --ease: cubic-bezier(0.22, 0.68, 0.2, 1);
+
+  --shadow-1: 0 1px 0 rgba(26, 26, 26, 0.04);
+  --shadow-2: 0 2px 6px rgba(26, 26, 26, 0.06), 0 8px 20px rgba(26, 26, 26, 0.04);
+  --shadow-3: 0 12px 40px rgba(26, 26, 26, 0.10);
+}
+
+/* ── Dark mode (auto via prefers-color-scheme) ──────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #0c0b09;
+    --bg-alt:      #17140f;
+    --fg:          #f5f0e3;
+    --fg-dim:      #8f8a7e;
+    --border:      #2a2620;
+    --border-soft: #1a1814;
+
+    --accent:       #d47a47;
+    --accent-2:     #e8885a;
+    --accent-tint:  #2c1f15;
+
+    --score-high-bg: #1a2e20;
+    --score-high-fg: #6ecb8a;
+    --score-mid-bg:  #30260f;
+    --score-mid-fg:  #e0a04c;
+    --score-low-bg:  #2d1517;
+    --score-low-fg:  #e06570;
+    --score-none-bg: #1a1814;
+    --score-none-fg: #6b655a;
+
+    --chip-bedrock:   #78350f;
+    --chip-anthropic: #4c1d95;
+    --chip-openai:    #064e3b;
+    --chip-minimax:   #1e3a8a;
+    --chip-ollama:    #831843;
+  }
+}
+
+/* ── Manual theme override — takes precedence over the media
+      query so the localStorage toggle is authoritative. ────── */
+
+:root[data-theme="dark"] {
+  --bg:          #0c0b09;
+  --bg-alt:      #17140f;
+  --fg:          #f5f0e3;
+  --fg-dim:      #8f8a7e;
+  --border:      #2a2620;
+  --border-soft: #1a1814;
+  --accent:       #d47a47;
+  --accent-2:     #e8885a;
+  --accent-tint:  #2c1f15;
+  --score-high-bg: #1a2e20;
+  --score-high-fg: #6ecb8a;
+  --score-mid-bg:  #30260f;
+  --score-mid-fg:  #e0a04c;
+  --score-low-bg:  #2d1517;
+  --score-low-fg:  #e06570;
+  --score-none-bg: #1a1814;
+  --score-none-fg: #6b655a;
+  --chip-bedrock:   #78350f;
+  --chip-anthropic: #4c1d95;
+  --chip-openai:    #064e3b;
+  --chip-minimax:   #1e3a8a;
+  --chip-ollama:    #831843;
+}
+
+:root[data-theme="light"] {
+  --bg:          #faf8f3;
+  --bg-alt:      #f4f0e6;
+  --fg:          #1a1a1a;
+  --fg-dim:      #6b6660;
+  --border:      #d9d3c3;
+  --border-soft: #ebe6d6;
+  --accent:       #a85c32;
+  --accent-2:     #c76d3c;
+  --accent-tint:  #f4e3d4;
+  --score-high-bg: #dce9df;
+  --score-high-fg: #2d7a4f;
+  --score-mid-bg:  #efe3c9;
+  --score-mid-fg:  #b77821;
+  --score-low-bg:  #f0d8d8;
+  --score-low-fg:  #a83032;
+  --score-none-bg: #ebe7dd;
+  --score-none-fg: #9c958a;
+  --chip-bedrock:   #fef3c7;
+  --chip-anthropic: #ede9fe;
+  --chip-openai:    #dcfce7;
+  --chip-minimax:   #dbeafe;
+  --chip-ollama:    #fce7f3;
+}
+</content>

@@ -133,6 +133,27 @@ def _collect_categories(rows: list[LeaderboardRow]) -> list[str]:
     return sorted(categories)
 
 
+def _average_category_scores(
+    rows: list[LeaderboardRow], categories: list[str]
+) -> dict[str, float]:
+    """Per-category mean score across the rows that have a value.
+
+    Used by the per-model page's radar chart (this model vs leaderboard
+    average) and the "delta vs avg" column. Categories with no data
+    points are omitted from the result.
+    """
+    result: dict[str, float] = {}
+    for cat in categories:
+        values = [
+            row.category_scores[cat]
+            for row in rows
+            if cat in row.category_scores and row.category_scores[cat] is not None
+        ]
+        if values:
+            result[cat] = sum(values) / len(values)
+    return result
+
+
 def _templates_dir() -> Path:
     """Return the filesystem path to the bundled Jinja2 templates.
 
@@ -189,6 +210,7 @@ def build(
     """
     rows = load_rows(showcase_dir)
     categories = _collect_categories(rows)
+    avg_scores = _average_category_scores(rows, categories)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "data").mkdir(exist_ok=True)
@@ -205,21 +227,31 @@ def build(
     env.filters["score_color"] = _score_color
     env.filters["fmt_score"] = _fmt_score
 
+    # Row data as plain dicts — embedded in the index page so the Alpine
+    # component can render the reactive table without a fetch() call
+    # (which would fail for file:// previews). Also written to
+    # data/leaderboard.json so external consumers (the deferred
+    # reval-webui tab, custom dashboards) can import it.
+    leaderboard_data = {
+        "rows": [row.model_dump(mode="json") for row in rows],
+        "categories": categories,
+    }
+
     # index.html — the main leaderboard table
     index_tpl = env.get_template("index.html.j2")
     (output_dir / "index.html").write_text(
-        index_tpl.render(rows=rows, categories=categories),
+        index_tpl.render(
+            rows=rows,
+            categories=categories,
+            leaderboard_data=leaderboard_data,
+        ),
         encoding="utf-8",
     )
 
     # data/leaderboard.json — raw rows for any JS-side consumer (or
     # the deferred reval-webui Streamlit leaderboard tab).
-    leaderboard_json = {
-        "rows": [row.model_dump(mode="json") for row in rows],
-        "categories": categories,
-    }
     (output_dir / "data" / "leaderboard.json").write_text(
-        json.dumps(leaderboard_json, indent=2),
+        json.dumps(leaderboard_data, indent=2),
         encoding="utf-8",
     )
 
@@ -227,7 +259,12 @@ def build(
     model_tpl = env.get_template("model.html.j2")
     for row in rows:
         (output_dir / "models" / f"{row.slug}.html").write_text(
-            model_tpl.render(row=row, categories=categories),
+            model_tpl.render(
+                row=row,
+                categories=categories,
+                row_data=row.model_dump(mode="json"),
+                avg_data=avg_scores,
+            ),
             encoding="utf-8",
         )
 

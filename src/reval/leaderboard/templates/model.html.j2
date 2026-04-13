@@ -1,55 +1,303 @@
 {% extends "base.html.j2" %}
 {% set index_href = "../index.html" %}
 {% set asset_root = "../assets" %}
-{% block title %}{{ row.model_id }} — REVAL Leaderboard{% endblock %}
+{% block title %}{{ row.model_id }} · REVAL{% endblock %}
 
 {% block content %}
-<section class="model-detail">
-  <nav class="breadcrumb"><a href="../index.html">← Leaderboard</a></nav>
+<div class="wrap relative z-[2] pt-12 pb-24">
 
-  <h2 class="model-title">
-    {{ row.model_id }}
-    <span class="provider-chip provider-{{ row.model_provider }}">{{ row.model_provider }}</span>
-  </h2>
+  {# ── Breadcrumb ───────────────────────────────────────────── #}
+  <nav class="mb-10">
+    <a
+      href="../index.html"
+      class="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] font-medium hover:text-[color:var(--accent)] transition-colors"
+      style="color: var(--fg-dim);"
+    >
+      <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+      <span>Back to leaderboard</span>
+    </a>
+  </nav>
 
-  <div class="overall-card {{ row.overall_score|score_color }}">
-    <div class="overall-label">Overall score</div>
-    <div class="overall-value">{{ row.overall_score|fmt_score }}</div>
-    <div class="overall-sub">{{ row.completed_evals }}/{{ row.total_evals }} evals completed{% if row.error_count %} · {{ row.error_count }} errors{% endif %}</div>
-  </div>
+  {# ── Hero ─────────────────────────────────────────────────── #}
+  <section class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 lg:gap-16 items-end reveal reveal-1">
+    <div class="min-w-0">
+      <div class="eyebrow-accent mb-5 flex items-center gap-2">
+        <span class="inline-block w-6 h-px" style="background: var(--accent);"></span>
+        <span class="provider-chip provider-{{ row.model_provider }}">{{ row.model_provider }}</span>
+        {% if row.timestamp %}
+        <span>·</span>
+        <span class="tabular">{{ row.timestamp[:10] }}</span>
+        {% endif %}
+      </div>
+      <h2
+        class="display-md break-words"
+        style="font-size: clamp(28px, 4.5vw, 56px); font-family: var(--font-mono); font-feature-settings: 'tnum', 'zero'; letter-spacing: -0.02em;"
+      >{{ row.model_id }}</h2>
+      <p class="mt-6 text-[13px]" style="color: var(--fg-dim);">
+        {{ row.completed_evals }} of {{ row.total_evals }} evaluations completed
+        {% if row.error_count %}· <span style="color: var(--score-low-fg);">{{ row.error_count }} errors</span>{% endif %}
+      </p>
+    </div>
 
-  <h3>Category scores</h3>
+    {# Big score card #}
+    <div
+      class="p-8 {{ row.overall_score | score_color }} relative"
+      style="min-width: 260px; border-radius: var(--radius-lg); background: {% if row.overall_score is not none and row.overall_score >= 0.85 %}var(--score-high-bg){% elif row.overall_score is not none and row.overall_score >= 0.70 %}var(--score-mid-bg){% elif row.overall_score is not none %}var(--score-low-bg){% else %}var(--score-none-bg){% endif %};"
+    >
+      <div class="eyebrow" style="color: var(--fg-dim); opacity: 0.85;">Overall score</div>
+      <div
+        class="display tabular mt-2 mb-1"
+        style="font-size: 68px; line-height: 0.95; color: {% if row.overall_score is not none and row.overall_score >= 0.85 %}var(--score-high-fg){% elif row.overall_score is not none and row.overall_score >= 0.70 %}var(--score-mid-fg){% elif row.overall_score is not none %}var(--score-low-fg){% else %}var(--score-none-fg){% endif %};"
+      >{{ row.overall_score | fmt_score }}</div>
+      <div
+        class="text-[12px] mono tabular mt-3"
+        style="color: {% if row.overall_score is not none and row.overall_score >= 0.85 %}var(--score-high-fg){% elif row.overall_score is not none and row.overall_score >= 0.70 %}var(--score-mid-fg){% elif row.overall_score is not none %}var(--score-low-fg){% else %}var(--score-none-fg){% endif %}; opacity: 0.8;"
+      >
+        {% if row.overall_score is not none and row.overall_score >= 0.85 %}LOW BIAS
+        {% elif row.overall_score is not none and row.overall_score >= 0.70 %}MODERATE
+        {% elif row.overall_score is not none %}POTENTIAL BIAS
+        {% else %}PENDING{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <hr class="hero-rule reveal reveal-2">
+
+  {# ── Radar chart: this model vs leaderboard average ──────── #}
   {% if row.category_scores %}
-  <table class="category-table">
-    <thead>
-      <tr><th>Category</th><th class="score-col">Score</th></tr>
-    </thead>
-    <tbody>
-      {% for category in categories %}
-      {% set score = row.category_scores.get(category) %}
-      <tr>
-        <td>{{ category|replace('_', ' ') }}</td>
-        <td class="score-cell {{ score|score_color }}">{{ score|fmt_score }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty-state">No category scores available for this run.</p>
+  <section class="reveal reveal-2 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-12 mb-16">
+    <div>
+      <div class="eyebrow mb-4">Category profile</div>
+      <div class="p-6" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+        <div style="height: 320px;">
+          <canvas id="modelRadar"></canvas>
+        </div>
+      </div>
+    </div>
+
+    {# ── Category delta table ────────────────────────────── #}
+    <div>
+      <div class="eyebrow mb-4">Score breakdown</div>
+      <table class="w-full text-[13px]">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border);">
+            <th class="text-left py-3 font-medium text-[10px] uppercase tracking-[0.14em]" style="color: var(--fg-dim);">Category</th>
+            <th class="text-right py-3 font-medium text-[10px] uppercase tracking-[0.14em]" style="color: var(--fg-dim);">Score</th>
+            <th class="text-right py-3 font-medium text-[10px] uppercase tracking-[0.14em]" style="color: var(--fg-dim);">vs avg</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category in categories %}
+          {% set score = row.category_scores.get(category) %}
+          <tr style="border-bottom: 1px solid var(--border-soft);">
+            <td class="py-3 capitalize">{{ category|replace('_', ' ') }}</td>
+            <td class="text-right py-3">
+              <span class="score-cell {{ score | score_color }}">{{ score | fmt_score }}</span>
+            </td>
+            <td class="text-right py-3 mono tabular text-[12px]" id="delta-{{ category }}" data-score="{{ score if score is not none else '' }}">—</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
   {% endif %}
 
-  <h3>Run metadata</h3>
-  <dl class="meta">
-    <dt>Judge model</dt><dd>{{ row.judge_model_id or "—" }}</dd>
-    <dt>Embeddings model</dt><dd>{{ row.embeddings_model_id or "—" }}</dd>
-    <dt>Timestamp</dt><dd>{{ row.timestamp or "—" }}</dd>
-    <dt>git SHA</dt><dd><code>{{ row.git_sha or "—" }}</code></dd>
-    <dt>Run slug</dt><dd><code>{{ row.slug }}</code></dd>
-  </dl>
+  {# ── Run metadata grid ────────────────────────────────────── #}
+  <section class="reveal reveal-3 mb-16">
+    <div class="eyebrow mb-4">Run metadata</div>
+    <dl
+      class="grid grid-cols-2 md:grid-cols-3 gap-px border"
+      style="border-color: var(--border); background: var(--border);"
+    >
+      <div class="p-5" style="background: var(--bg);">
+        <dt class="eyebrow mb-2">Judge</dt>
+        <dd class="mono text-[12px] break-all" style="color: var(--fg);">{{ row.judge_model_id or "—" }}</dd>
+      </div>
+      <div class="p-5" style="background: var(--bg);">
+        <dt class="eyebrow mb-2">Embeddings</dt>
+        <dd class="mono text-[12px] break-all" style="color: var(--fg);">{{ row.embeddings_model_id or "—" }}</dd>
+      </div>
+      <div class="p-5" style="background: var(--bg);">
+        <dt class="eyebrow mb-2">Completed</dt>
+        <dd class="mono tabular text-[12px]" style="color: var(--fg);">{{ row.completed_evals }} / {{ row.total_evals }}{% if row.error_count %} · {{ row.error_count }} err{% endif %}</dd>
+      </div>
+      <div class="p-5" style="background: var(--bg);">
+        <dt class="eyebrow mb-2">Timestamp</dt>
+        <dd class="mono text-[12px]" style="color: var(--fg);">{{ row.timestamp or "—" }}</dd>
+      </div>
+      <div class="p-5" style="background: var(--bg);">
+        <dt class="eyebrow mb-2">git SHA</dt>
+        <dd class="mono text-[12px]" style="color: var(--fg);">{{ row.git_sha or "—" }}</dd>
+      </div>
+      <div class="p-5" style="background: var(--bg);">
+        <dt class="eyebrow mb-2">Run slug</dt>
+        <dd class="mono text-[11px] break-all" style="color: var(--fg);">{{ row.slug }}</dd>
+      </div>
+    </dl>
+  </section>
 
+  {# ── Embedded full report ─────────────────────────────────── #}
   {% if row.report_href %}
-  <h3>Full report</h3>
-  <p><a class="btn" href="../{{ row.report_href }}">Open the interactive HTML report →</a></p>
+  <section class="reveal reveal-4">
+    <div class="flex items-baseline justify-between mb-4">
+      <div class="eyebrow">Full report</div>
+      <a
+        href="../{{ row.report_href }}"
+        class="text-[11px] uppercase tracking-[0.14em] font-medium hover:text-[color:var(--accent)] transition-colors flex items-center gap-1.5"
+        style="color: var(--fg-dim);"
+      >
+        <span>Open in new tab</span>
+        <i data-lucide="external-link" class="w-3 h-3"></i>
+      </a>
+    </div>
+    <div
+      class="overflow-hidden border"
+      style="border-color: var(--border); border-radius: var(--radius-lg); background: var(--bg-alt);"
+    >
+      <iframe
+        src="../{{ row.report_href }}"
+        title="Full report for {{ row.model_id }}"
+        style="width: 100%; height: 900px; border: 0; background: var(--bg);"
+        loading="lazy"
+      ></iframe>
+    </div>
+  </section>
   {% endif %}
-</section>
+
+</div>
+
+<script>
+  (function () {
+    // Embed the row + average data so the radar chart renders without fetch()
+    var rowData = {{ row_data | tojson | safe }};
+    var avgData = {{ avg_data | tojson | safe }};
+    var categories = {{ categories | tojson | safe }};
+
+    // Delta-vs-average cells
+    categories.forEach(function (cat) {
+      var cell = document.getElementById('delta-' + cat);
+      if (!cell) return;
+      var rowScore = rowData.category_scores[cat];
+      var avgScore = avgData[cat];
+      if (rowScore == null || avgScore == null) {
+        cell.textContent = '—';
+        cell.style.color = 'var(--fg-dim)';
+        return;
+      }
+      var delta = rowScore - avgScore;
+      var sign = delta >= 0 ? '+' : '−';
+      var color;
+      if (Math.abs(delta) < 0.005) {
+        color = 'var(--fg-dim)';
+      } else if (delta > 0) {
+        color = 'var(--score-high-fg)';
+      } else {
+        color = 'var(--score-low-fg)';
+      }
+      cell.textContent = sign + Math.abs(delta).toFixed(3);
+      cell.style.color = color;
+    });
+
+    // Radar chart (Chart.js)
+    function drawRadar() {
+      var canvas = document.getElementById('modelRadar');
+      if (!canvas || !window.Chart) return;
+
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+        || (!document.documentElement.getAttribute('data-theme')
+            && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+      var accent = isDark ? '#d47a47' : '#a85c32';
+      var dimAccent = isDark ? 'rgba(212,122,71,0.18)' : 'rgba(168,92,50,0.18)';
+      var avgColor = isDark ? 'rgba(143,138,126,0.9)' : 'rgba(107,102,96,0.9)';
+      var avgFill = isDark ? 'rgba(143,138,126,0.12)' : 'rgba(107,102,96,0.12)';
+      var gridColor = isDark ? 'rgba(42,38,32,0.8)' : 'rgba(217,211,195,0.7)';
+      var labelColor = isDark ? '#d4cfc0' : '#3d3d3d';
+
+      var labels = categories.map(function (c) { return c.replace(/_/g, ' '); });
+      var modelScores = categories.map(function (c) { return rowData.category_scores[c] || 0; });
+      var avgScores = categories.map(function (c) { return avgData[c] || 0; });
+
+      new Chart(canvas.getContext('2d'), {
+        type: 'radar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'leaderboard avg',
+              data: avgScores,
+              borderColor: avgColor,
+              backgroundColor: avgFill,
+              borderWidth: 1,
+              borderDash: [3, 3],
+              pointRadius: 3,
+              pointBackgroundColor: avgColor,
+            },
+            {
+              label: rowData.model_id,
+              data: modelScores,
+              borderColor: accent,
+              backgroundColor: dimAccent,
+              borderWidth: 2,
+              pointRadius: 4,
+              pointBackgroundColor: accent,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                color: labelColor,
+                font: { family: 'Inter, sans-serif', size: 11, weight: '500' },
+                padding: 16,
+                boxWidth: 14,
+              }
+            },
+            tooltip: {
+              backgroundColor: isDark ? '#17140f' : '#faf8f3',
+              titleColor: isDark ? '#f5f0e3' : '#1a1a1a',
+              bodyColor: isDark ? '#d4cfc0' : '#3d3d3d',
+              borderColor: accent,
+              borderWidth: 1,
+              padding: 10,
+              titleFont: { family: 'Inter, sans-serif', size: 11, weight: '600' },
+              bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+            }
+          },
+          scales: {
+            r: {
+              angleLines: { color: gridColor },
+              grid: { color: gridColor },
+              min: 0,
+              max: 1,
+              ticks: {
+                stepSize: 0.2,
+                color: isDark ? 'rgba(143,138,126,0.7)' : 'rgba(107,102,96,0.7)',
+                backdropColor: 'transparent',
+                font: { family: 'JetBrains Mono, monospace', size: 9 },
+                showLabelBackdrop: false,
+              },
+              pointLabels: {
+                color: labelColor,
+                font: { family: 'Inter, sans-serif', size: 11, weight: '500' },
+              }
+            }
+          }
+        }
+      });
+    }
+
+    if (window.Chart) {
+      drawRadar();
+    } else {
+      document.addEventListener('DOMContentLoaded', drawRadar);
+    }
+  })();
+</script>
 {% endblock %}
+</content>
