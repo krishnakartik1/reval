@@ -301,9 +301,6 @@ code, pre {
   font-size: 13px;
 }
 .leader-table thead th {
-  position: sticky;
-  top: 64px;
-  z-index: 5;
   background: var(--bg);
   color: var(--fg-dim);
   text-align: left;
