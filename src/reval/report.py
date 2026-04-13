@@ -1,9 +1,11 @@
 """Report generators and output helpers for REVAL benchmark results.
 
-The HTML report uses the same CSS palette as the static leaderboard
-(`reval.leaderboard.get_style_css`), so individual run reports and the
-public leaderboard look consistent — clicking a row on the leaderboard
-and landing on that run's detail page is visually seamless.
+The per-run HTML report shares its design language with the static
+leaderboard (`reval.leaderboard`) via `get_style_css()` — same
+Archival Data Journalism aesthetic: warm parchment, rust accent,
+Fraunces variable-serif display type, Inter body, JetBrains Mono for
+IDs. Clicking a row on the public leaderboard and landing on that
+run's embedded report is visually seamless.
 
 Each result card expands into three stacked sections:
 
@@ -12,13 +14,10 @@ Each result card expands into three stacked sections:
                       Requires the original `EvalEntry` (pass `evals=`
                       to `generate_html_report` or `save_run_outputs`).
 2. **Response**     — full, scrollable model output. Paired-prompt
-                      categories (policy_attribution, figure_treatment,
-                      argumentation_parity) show both responses side by
-                      side. Truncation-free — callers can eyeball
-                      exactly what the model produced.
-3. **Score**        — top-line score, rubric bars, sub-scores, judge
-                      reasoning, and a mini horizontal bar chart when
-                      rubric scores are present.
+                      categories show both responses side by side.
+                      Truncation-free.
+3. **Score**        — hero score number, method, latency, sub-scores,
+                      rubric bars, judge reasoning.
 """
 
 from __future__ import annotations
@@ -45,28 +44,17 @@ def _score_color(score: float | None) -> str:
     return "score-low"
 
 
-def _score_bg(score: float) -> str:
-    if score >= 0.85:
-        return "#dcfce7"
-    if score >= 0.70:
-        return "#fef9c3"
-    return "#fee2e2"
-
-
-def _score_hex(score: float) -> str:
-    if score >= 0.85:
-        return "#22c55e"
-    if score >= 0.70:
-        return "#eab308"
-    return "#ef4444"
-
-
 def _score_label(score: float) -> str:
     if score >= 0.85:
         return "Low bias"
     if score >= 0.70:
         return "Moderate"
     return "Potential bias"
+
+
+def _score_label_upper(score: float) -> str:
+    """Eyebrow-style variant of `_score_label`."""
+    return _score_label(score).upper()
 
 
 def _esc(text: object) -> str:
@@ -76,6 +64,28 @@ def _esc(text: object) -> str:
 def _cat(value: object) -> str:
     """Unwrap an EvalCategory enum (or leave a string alone)."""
     return value.value if hasattr(value, "value") else str(value)
+
+
+# ── Category icon mapping (Lucide names) ───────────────────────────────
+
+_CATEGORY_ICONS: dict[EvalCategory, str] = {
+    EvalCategory.POLICY_ATTRIBUTION: "scale",
+    EvalCategory.FIGURE_TREATMENT: "users",
+    EvalCategory.ISSUE_FRAMING: "message-square-quote",
+    EvalCategory.FACTUAL_ACCURACY: "shield-check",
+    EvalCategory.ARGUMENTATION_PARITY: "git-compare-arrows",
+}
+
+
+def _category_icon(category: object) -> str:
+    """Return the Lucide icon name for a category, defaulting to 'circle'."""
+    try:
+        enum_val = (
+            category if isinstance(category, EvalCategory) else EvalCategory(category)
+        )
+        return _CATEGORY_ICONS.get(enum_val, "circle")
+    except (KeyError, ValueError):
+        return "circle"
 
 
 # ── Per-category test-case rendering ───────────────────────────────────
@@ -100,8 +110,8 @@ def _render_test_case(entry: EvalEntry) -> str:
     """Render the 'Test case' section for a single EvalEntry.
 
     Per-category dispatch — each category pulls out the fields that
-    matter for that category. Missing fields render nothing (not a
-    dash) to keep the panel tight.
+    matter for that category. Missing fields render nothing to keep the
+    panel tight.
     """
     parts: list[str] = []
 
@@ -166,9 +176,11 @@ def _render_test_case(entry: EvalEntry) -> str:
             )
             parts.append(
                 '<div class="ground-truth">'
-                f'<div class="gt-header">Ground truth <span class="gt-level">{_esc(level_label)}</span></div>'
+                f'<div class="gt-header">Ground truth'
+                f' <span class="gt-level">{_esc(level_label)}</span></div>'
                 f'<div class="gt-claim"><strong>Claim:</strong> {_esc(gt.claim)}</div>'
-                f'<div class="gt-correct"><strong>Correct response:</strong> {_esc(gt.correct_response)}</div>'
+                f'<div class="gt-correct"><strong>Correct response:</strong>'
+                f" {_esc(gt.correct_response)}</div>"
             )
             if gt.citations:
                 parts.append(
@@ -228,13 +240,7 @@ def _render_response_block(label: str, body: str) -> str:
 
 
 def _render_responses(result: EvalResult) -> str:
-    """Render the 'Response' section for a single EvalResult.
-
-    Paired-prompt categories (policy_attribution, figure_treatment,
-    argumentation_parity) show two blocks; factual_accuracy shows
-    response + counterfactual_response; issue_framing shows just
-    raw_response.
-    """
+    """Render the 'Response' section for a single EvalResult."""
     cat = result.category
     blocks: list[str] = []
 
@@ -328,9 +334,9 @@ def _render_score_section(result: EvalResult) -> str:
     latency = f"{result.latency_ms} ms" if result.latency_ms is not None else "—"
 
     parts: list[str] = [
-        f'<div class="score-hero score-cell {_score_color(result.score)}">'
-        f'<div class="score-hero-label">Overall</div>'
-        f'<div class="score-hero-value">{result.score:.3f}</div>'
+        f'<div class="score-hero {_score_color(result.score)}">'
+        f'<div class="score-hero-label eyebrow">Overall</div>'
+        f'<div class="score-hero-value tabular">{result.score:.3f}</div>'
         f'<div class="score-hero-sub">{_esc(_score_label(result.score))}</div>'
         f"</div>"
         f'<div class="kv-grid tight">'
@@ -357,299 +363,491 @@ def _render_score_section(result: EvalResult) -> str:
     return '<div class="section-body">' + "".join(parts) + "</div>"
 
 
-# ── Additional CSS on top of the leaderboard palette ──────────────────
+# ── Report-specific CSS on top of tokens.css + style.css ──────────────
+#
+# Most of the layout now lives in the shared leaderboard stylesheet
+# (tokens.css + style.css from `reval.leaderboard`). What's kept here
+# is report-specific: the run hero card, expandable result cards,
+# collapsible sections, and the test-case / prompt / ground-truth /
+# response / rubric / sub-score panels unique to per-run reports.
 
 
 _REPORT_EXTRA_CSS = """
-/* Run report — inherits the palette from leaderboard/assets/style.css,
-   adds the overall-card hero, category chart container, and the
-   three-section expandable result cards. */
+/* ── Report page chrome ────────────────────────────────────────── */
 
-:root { --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace; }
+.report-page { padding-top: 56px; padding-bottom: 96px; }
 
-.run-hero {
-  padding: 2rem;
-  border-radius: 0.75rem;
-  margin: 1rem 0 2rem;
+.report-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+  align-items: end;
+}
+@media (min-width: 900px) {
+  .report-hero { grid-template-columns: 1fr auto; gap: 64px; }
+}
+
+.report-hero-left .eyebrow-accent { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.report-hero-left .eyebrow-accent::before {
+  content: ""; display: inline-block; width: 24px; height: 1px; background: var(--accent);
+}
+.report-hero-title {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum", "zero";
+  letter-spacing: -0.02em;
+  font-size: clamp(24px, 4vw, 42px);
+  line-height: 1.05;
+  color: var(--fg);
+  word-break: break-word;
+  margin: 0;
+}
+.report-hero-sub {
+  margin-top: 18px;
+  color: var(--fg-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.report-hero-card {
+  padding: 28px 32px;
+  border-radius: 8px;
+  min-width: 260px;
+}
+.report-hero-card.score-high { background: var(--score-high-bg); }
+.report-hero-card.score-mid  { background: var(--score-mid-bg); }
+.report-hero-card.score-low  { background: var(--score-low-bg); }
+.report-hero-card.score-none { background: var(--score-none-bg); }
+.report-hero-card .run-hero-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.report-hero-card.score-high .run-hero-label,
+.report-hero-card.score-high .run-hero-value,
+.report-hero-card.score-high .run-hero-sub { color: var(--score-high-fg); }
+.report-hero-card.score-mid .run-hero-label,
+.report-hero-card.score-mid .run-hero-value,
+.report-hero-card.score-mid .run-hero-sub { color: var(--score-mid-fg); }
+.report-hero-card.score-low .run-hero-label,
+.report-hero-card.score-low .run-hero-value,
+.report-hero-card.score-low .run-hero-sub { color: var(--score-low-fg); }
+.report-hero-card.score-none .run-hero-label,
+.report-hero-card.score-none .run-hero-value,
+.report-hero-card.score-none .run-hero-sub { color: var(--score-none-fg); }
+
+.run-hero-value {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 144, "wght" 500, "SOFT" 40;
+  font-size: 72px;
+  font-variant-numeric: tabular-nums;
+  line-height: 0.95;
+  margin: 8px 0 6px;
+  letter-spacing: -0.02em;
+}
+.run-hero-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+/* Metadata strip — hairline grid, mirrors leaderboard model page */
+.run-hero-meta {
+  margin-top: 48px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--border);
   border: 1px solid var(--border);
 }
-.run-hero.score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
-.run-hero.score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
-.run-hero.score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); }
-.run-hero-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
-.run-hero-value { font-size: 3rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; margin: 0.25rem 0; }
-.run-hero-sub { font-size: 1rem; opacity: 0.85; }
-.run-hero-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid rgba(0,0,0,0.1);
+@media (min-width: 700px)  { .run-hero-meta { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1100px) { .run-hero-meta { grid-template-columns: repeat(6, 1fr); } }
+.run-hero-meta .kv {
+  padding: 20px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
-@media (prefers-color-scheme: dark) {
-  .run-hero-meta { border-top-color: rgba(255,255,255,0.1); }
+.run-hero-meta .kv-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
 }
-.run-hero-meta .kv-label { opacity: 0.75; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.run-hero-meta .kv-value { font-size: 0.9rem; font-family: var(--mono); word-break: break-word; }
+.run-hero-meta .kv-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+/* ── Gradient hero rule (defined in style.css, but margins tuned) ── */
+.report-rule { margin: 64px 0 48px; }
 
 h2.section-title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  margin: 2.5rem 0 1rem;
-  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin: 0 0 16px;
 }
 
-/* Category chart */
+/* ── Category chart card ──────────────────────────────────────── */
 .chart-card {
   background: var(--bg-alt);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
+  border-radius: 8px;
+  padding: 28px;
+  margin-bottom: 56px;
 }
 .chart-container { position: relative; height: 280px; }
 
-/* Result cards (expandable) */
-.result-list { display: flex; flex-direction: column; gap: 0.5rem; }
+/* ── Result cards (expandable) ────────────────────────────────── */
+.result-list { display: flex; flex-direction: column; gap: 8px; }
+
 .result-card {
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 8px;
   background: var(--bg);
   overflow: hidden;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur) var(--ease);
 }
 .result-card:hover { border-color: var(--accent); }
 .result-card.expanded { border-color: var(--accent); }
+
 .result-header {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-columns: auto auto 1fr auto auto auto;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  gap: 14px;
+  padding: 14px 20px;
   cursor: pointer;
   user-select: none;
+  transition: background-color var(--dur) var(--ease);
 }
 .result-header:hover { background: var(--bg-alt); }
 .expand-icon {
-  display: inline-block;
-  width: 1rem;
+  width: 12px;
+  height: 12px;
   color: var(--fg-dim);
-  transition: transform 0.15s;
-  font-size: 0.7rem;
+  transition: transform var(--dur) var(--ease);
+  flex-shrink: 0;
 }
-.result-card.expanded .expand-icon { transform: rotate(90deg); }
-.result-eval-id { font-family: var(--mono); font-size: 0.85rem; color: var(--fg); }
-.result-category { font-size: 0.8rem; color: var(--fg-dim); }
-.result-method { font-size: 0.75rem; color: var(--fg-dim); font-family: var(--mono); }
-.result-score {
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.375rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.result-card.expanded .expand-icon { transform: rotate(90deg); color: var(--accent); }
+
+.result-cat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
 }
-.result-score.score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
-.result-score.score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
-.result-score.score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); }
+.result-card:hover .result-cat-icon { color: var(--accent); border-color: var(--accent); }
+
+.result-eval-id {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-category {
+  font-size: 11px;
+  color: var(--fg-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.result-method {
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  display: none;
+}
+@media (min-width: 900px) { .result-method { display: inline; } }
 
 .result-body {
   display: none;
-  padding: 0 1rem 1rem;
-  border-top: 1px solid var(--border);
+  padding: 0 20px 20px;
+  border-top: 1px solid var(--border-soft);
 }
 .result-card.expanded .result-body { display: block; }
 
+/* Stacked sections inside a result card */
 .section {
-  margin-top: 1rem;
-  border-radius: 0.375rem;
+  margin-top: 20px;
+  border-radius: 6px;
   background: var(--bg-alt);
   overflow: hidden;
+  border: 1px solid var(--border-soft);
 }
 .section-header {
-  padding: 0.6rem 1rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--fg-dim);
+  padding: 10px 16px;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
 }
-.section-body { padding: 1rem; }
+.section-body { padding: 20px; }
 
-/* Test case section */
+/* ── Test case panel ──────────────────────────────────────────── */
 .kv-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.5rem 1rem;
-  margin-bottom: 1rem;
+  gap: 12px 20px;
+  margin-bottom: 20px;
 }
 .kv-grid.tight { margin-bottom: 0; }
-.kv { display: flex; flex-direction: column; font-size: 0.85rem; }
-.kv-label { color: var(--fg-dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.kv-value { font-family: var(--mono); word-break: break-word; }
+.kv { display: flex; flex-direction: column; font-size: 12px; gap: 3px; }
+.kv-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.kv-value {
+  font-family: var(--font-mono);
+  word-break: break-word;
+  color: var(--fg);
+}
 
-.prompt-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-@media (max-width: 800px) { .prompt-pair { grid-template-columns: 1fr; } }
+.prompt-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+@media (min-width: 820px) {
+  .prompt-pair { grid-template-columns: 1fr 1fr; }
+}
 .prompt-block {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 14px 18px;
 }
 .prompt-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-dim);
-  margin-bottom: 0.5rem;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin-bottom: 8px;
 }
-.prompt-body { font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
+.prompt-body {
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: var(--fg);
+}
 
 .ground-truth {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  padding: 1rem;
-  margin-top: 1rem;
-  font-size: 0.9rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 18px 20px;
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.55;
 }
-.gt-header { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--fg); }
-.gt-level { font-size: 0.7rem; padding: 0.1rem 0.5rem; border-radius: 0.375rem; background: var(--bg-alt); color: var(--fg-dim); font-weight: 500; }
-.gt-claim, .gt-correct { margin: 0.5rem 0; line-height: 1.5; }
-.gt-citations, .gt-misconceptions { margin-top: 0.75rem; font-size: 0.85rem; }
-.gt-citations ul, .gt-misconceptions ul { margin: 0.25rem 0 0 1.25rem; padding: 0; }
-.gt-citations li, .gt-misconceptions li { margin: 0.15rem 0; }
-.gt-citations a { color: var(--accent); }
+.gt-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg);
+  margin-bottom: 14px;
+}
+.gt-level {
+  font-size: 9px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.gt-claim, .gt-correct { margin: 10px 0; color: var(--fg); }
+.gt-claim strong, .gt-correct strong,
+.gt-citations strong, .gt-misconceptions strong {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+.gt-citations, .gt-misconceptions { margin-top: 14px; font-size: 12px; color: var(--fg-dim); }
+.gt-citations ul, .gt-misconceptions ul { margin: 4px 0 0 20px; padding: 0; }
+.gt-citations li, .gt-misconceptions li { margin: 3px 0; }
+.gt-citations a { color: var(--accent); text-decoration: underline; }
 
-.tags { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.tags { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
 .tag {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.1rem 0.6rem;
-  font-size: 0.7rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 10px;
   color: var(--fg-dim);
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 
-/* Response section */
+/* ── Response panel ───────────────────────────────────────────── */
 .response-block {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
   overflow: hidden;
-  margin-bottom: 1rem;
+  margin-bottom: 14px;
 }
 .response-block:last-child { margin-bottom: 0; }
 .response-label {
-  padding: 0.5rem 1rem;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-dim);
+  padding: 10px 16px;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
   background: var(--bg-alt);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
 }
 .response-body {
-  max-height: 400px;
+  max-height: 420px;
   overflow-y: auto;
   margin: 0;
-  padding: 1rem;
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  line-height: 1.55;
+  padding: 18px 20px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--fg);
 }
 
-/* Score section */
+/* ── Score panel ──────────────────────────────────────────────── */
 .score-hero {
-  padding: 1.25rem 1.5rem;
-  border-radius: 0.5rem;
-  margin-bottom: 1rem;
+  padding: 22px 26px;
+  border-radius: 8px;
+  margin-bottom: 20px;
 }
+.score-hero.score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
+.score-hero.score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
+.score-hero.score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); }
+.score-hero.score-none { background: var(--score-none-bg); color: var(--score-none-fg); }
 .score-hero-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.8;
+  opacity: 0.85;
+  color: inherit !important;
 }
 .score-hero-value {
-  font-size: 2.5rem;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 96, "wght" 500, "SOFT" 30;
+  font-size: 44px;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  margin: 0.25rem 0;
+  line-height: 0.95;
+  margin: 6px 0 4px;
+  letter-spacing: -0.015em;
 }
-.score-hero-sub { font-size: 0.9rem; opacity: 0.85; }
+.score-hero-sub {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  opacity: 0.85;
+}
 
 .section-h4 {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-dim);
+  font-size: 10px;
   font-weight: 600;
-  margin: 1.25rem 0 0.5rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin: 24px 0 10px;
 }
 
-.rubric-bars { display: flex; flex-direction: column; gap: 0.4rem; }
-.rubric-row { display: flex; align-items: center; gap: 0.75rem; }
-.rubric-name { width: 200px; font-size: 0.85rem; flex-shrink: 0; color: var(--fg); }
-.rubric-bar-bg {
-  flex: 1;
-  height: 10px;
-  background: var(--border);
-  border-radius: 5px;
-  overflow: hidden;
+.rubric-bars { display: flex; flex-direction: column; gap: 8px; }
+.rubric-row { display: flex; align-items: center; gap: 14px; }
+.rubric-name {
+  width: 200px;
+  font-size: 13px;
+  flex-shrink: 0;
+  color: var(--fg);
 }
-.rubric-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-  border-radius: 5px;
-  transition: width 0.3s;
+.rubric-row .rubric-bar-bg {
+  flex: 1;
+  height: 8px;
 }
 .rubric-val {
-  width: 50px;
+  width: 56px;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 0.85rem;
-  font-family: var(--mono);
+  font-size: 12px;
+  font-family: var(--font-mono);
   color: var(--fg);
 }
 
 .sub-scores {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.5rem;
+  gap: 8px;
 }
 .sub-score {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  padding: 10px 14px;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
 }
-.sub-score-label { font-size: 0.85rem; color: var(--fg); }
-.sub-score-value { padding: 0.1rem 0.5rem; border-radius: 0.25rem; font-variant-numeric: tabular-nums; font-size: 0.85rem; font-weight: 600; }
+.sub-score-label {
+  font-size: 12px;
+  color: var(--fg);
+}
 
 .judge-reasoning {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  padding: 0.85rem 1rem;
-  font-size: 0.9rem;
-  line-height: 1.55;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.65;
   white-space: pre-wrap;
   color: var(--fg);
 }
 
-.empty-section { color: var(--fg-dim); font-style: italic; padding: 1rem; }
+.empty-section {
+  color: var(--fg-dim);
+  font-style: italic;
+  padding: 20px;
+  font-size: 13px;
+}
 """
 
 
@@ -667,11 +865,9 @@ def generate_html_report(
         run: Completed benchmark run with results.
         output_path: Path to write the HTML file.
         evals: Optional list of `EvalEntry` objects corresponding to
-            the runs's `eval_ids`. When provided, each result expands
-            into a three-section panel: test case (from the entry),
-            response (from the result), and score breakdown. When None,
-            the test-case section is omitted and the layout degrades
-            gracefully.
+            the run's `eval_ids`. When provided, each result expands
+            into a three-section panel: test case, response, score.
+            When None, the test-case section is omitted.
     """
     overall = run.overall_score or 0.0
     started = (
@@ -690,10 +886,11 @@ def generate_html_report(
         key=lambda r: (_cat(r.category), r.eval_id),
     )
 
-    # Category chart data
+    # Category chart data — colors pulled from CSS vars at render time
+    # (see the <script> block below) so the chart respects light/dark
+    # themes natively.
     cat_labels = json.dumps(list(run.category_scores.keys()))
     cat_values = json.dumps(list(run.category_scores.values()))
-    cat_colors = json.dumps([_score_hex(v) for v in run.category_scores.values()])
 
     # Result cards
     card_chunks: list[str] = []
@@ -701,6 +898,7 @@ def generate_html_report(
         matched_entry: EvalEntry | None = eval_by_id.get(result.eval_id)
         category_label = _cat(result.category)
         method_label = _cat(result.scoring_method) if result.scoring_method else "—"
+        icon_name = _category_icon(result.category)
 
         sections: list[str] = []
         if matched_entry is not None:
@@ -726,11 +924,14 @@ def generate_html_report(
         card_chunks.append(
             '<article class="result-card">'
             '<header class="result-header">'
-            '<span class="expand-icon">&#9654;</span>'
+            '<svg class="expand-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">'
+            '<path d="M4 2 L8 6 L4 10"/></svg>'
+            f'<span class="result-cat-icon"><i data-lucide="{_esc(icon_name)}"'
+            ' style="width:14px;height:14px"></i></span>'
             f'<span class="result-eval-id">{_esc(result.eval_id)}</span>'
             f'<span class="result-category">{_esc(category_label)}</span>'
             f'<span class="result-method">{_esc(method_label)}</span>'
-            f'<span class="result-score {_score_color(result.score)}">{result.score:.3f}</span>'
+            f'<span class="score-cell {_score_color(result.score)}">{result.score:.3f}</span>'
             "</header>"
             f'<div class="result-body">{"".join(sections)}</div>'
             "</article>"
@@ -738,15 +939,15 @@ def generate_html_report(
 
     results_html = "\n".join(card_chunks)
 
-    # Meta items for the hero
+    # Hero meta items — same 6-cell grid as leaderboard model detail page
     meta_items = [
         ("Target model", run.model_id or "—"),
-        ("Judge model", run.judge_model_id or "—"),
-        ("Embeddings model", run.embeddings_model_id or "—"),
+        ("Judge", run.judge_model_id or "—"),
+        ("Embeddings", run.embeddings_model_id or "—"),
         (
             "Completed",
             f"{run.completed_evals}/{run.total_evals}"
-            + (f" · {run.error_count} errors" if run.error_count else ""),
+            + (f" · {run.error_count} err" if run.error_count else ""),
         ),
         ("Run date", started),
         ("Run ID", (run.run_id[:12] + "…") if run.run_id else "—"),
@@ -764,27 +965,67 @@ def generate_html_report(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#faf8f3">
 <title>REVAL Report · {_esc(run.model_id)}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/lucide@0.363.0/dist/umd/lucide.min.js"></script>
+
 <style>
 {style}
 </style>
 </head>
 <body>
+
+<div class="grain" aria-hidden="true"></div>
+
 <header class="site-header">
   <div class="wrap">
-    <h1>REVAL <span class="subtitle">Benchmark report</span></h1>
-    <p class="tagline">Per-eval breakdown · click any row to expand</p>
+    <h1>
+      <a href="../index.html" class="flex items-baseline gap-3" style="text-decoration:none;">
+        <span>REVAL</span>
+        <span class="subtitle">Benchmark report</span>
+      </a>
+    </h1>
+    <nav style="display:flex;align-items:center;gap:20px;">
+      <a href="https://github.com/krishnakartik1/reval"
+         style="color:var(--fg-dim);font-size:11px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;">
+        GitHub
+      </a>
+    </nav>
   </div>
 </header>
-<main class="wrap">
 
-  <section class="run-hero {_score_color(overall)}">
-    <div class="run-hero-label">Overall score</div>
-    <div class="run-hero-value">{overall:.3f}</div>
-    <div class="run-hero-sub">{_esc(_score_label(overall))}</div>
-    <div class="run-hero-meta">{meta_html}</div>
+<main class="wrap report-page">
+
+  <section class="report-hero">
+    <div class="report-hero-left">
+      <div class="eyebrow-accent">
+        <span>Reval benchmark</span>
+        <span aria-hidden="true">·</span>
+        <span>Run report</span>
+      </div>
+      <h2 class="report-hero-title">{_esc(run.model_id)}</h2>
+      <p class="report-hero-sub">
+        {run.completed_evals} of {run.total_evals} evaluations completed
+        {f" · {run.error_count} errors" if run.error_count else ""}
+      </p>
+    </div>
+
+    <div class="report-hero-card {_score_color(overall)}">
+      <div class="eyebrow run-hero-label">Overall score</div>
+      <div class="run-hero-value">{overall:.3f}</div>
+      <div class="run-hero-sub">{_esc(_score_label_upper(overall))}</div>
+    </div>
   </section>
+
+  <div class="run-hero-meta">{meta_html}</div>
+
+  <hr class="hero-rule report-rule">
 
   <h2 class="section-title">Category scores</h2>
   <div class="chart-card">
@@ -799,47 +1040,101 @@ def generate_html_report(
   </div>
 
 </main>
-<footer class="site-footer">
+
+<footer class="site-footer no-print">
   <div class="wrap">
-    <p>Generated by <code>reval run</code> · <a href="https://github.com/krishnakartik1/reval">reval on GitHub</a></p>
+    <p>Generated by <code class="mono">reval run</code></p>
+    <p><a href="https://github.com/krishnakartik1/reval">github.com/krishnakartik1/reval</a></p>
   </div>
 </footer>
 
 <script>
-  new Chart(document.getElementById('categoryChart'), {{
-    type: 'bar',
-    data: {{
-      labels: {cat_labels},
-      datasets: [{{
-        data: {cat_values},
-        backgroundColor: {cat_colors},
-        borderRadius: 6,
-        barThickness: 30,
-      }}]
-    }},
-    options: {{
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {{
-        legend: {{ display: false }},
-        tooltip: {{ callbacks: {{ label: ctx => ctx.parsed.x.toFixed(3) }} }}
-      }},
-      scales: {{
-        x: {{ min: 0, max: 1, ticks: {{ stepSize: 0.2 }}, grid: {{ color: 'rgba(148,163,184,0.2)' }} }},
-        y: {{ grid: {{ display: false }}, ticks: {{ color: 'rgba(148,163,184,0.9)' }} }}
-      }}
+  // Resolve palette colors from CSS vars at render time so the chart
+  // respects light/dark theme automatically.
+  (function () {{
+    function cssVar(name) {{
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     }}
-  }});
 
-  // Expand/collapse result cards. Click a header toggles the one card;
-  // other cards stay as-is (no accordion — user can compare side by
-  // side).
-  document.querySelectorAll('.result-header').forEach(h => {{
-    h.addEventListener('click', () => {{
+    function scoreColor(v) {{
+      if (v >= 0.85) return cssVar('--score-high-fg') || '#2d7a4f';
+      if (v >= 0.70) return cssVar('--score-mid-fg')  || '#b77821';
+      return cssVar('--score-low-fg') || '#a83032';
+    }}
+
+    var labels = {cat_labels};
+    var values = {cat_values};
+    var colors = values.map(scoreColor);
+
+    var gridColor = cssVar('--border') || '#d9d3c3';
+    var axisColor = cssVar('--fg-dim') || '#6b6660';
+
+    var ctx = document.getElementById('categoryChart');
+    if (ctx && window.Chart) {{
+      new Chart(ctx, {{
+        type: 'bar',
+        data: {{
+          labels: labels.map(l => l.replace(/_/g, ' ')),
+          datasets: [{{
+            data: values,
+            backgroundColor: colors,
+            borderRadius: 4,
+            barThickness: 24,
+          }}]
+        }},
+        options: {{
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {{
+            legend: {{ display: false }},
+            tooltip: {{
+              backgroundColor: cssVar('--bg-alt') || '#f4f0e6',
+              titleColor: cssVar('--fg') || '#1a1a1a',
+              bodyColor: cssVar('--fg-dim') || '#6b6660',
+              borderColor: cssVar('--accent') || '#a85c32',
+              borderWidth: 1,
+              padding: 12,
+              titleFont: {{ family: 'Inter, sans-serif', size: 11, weight: '600' }},
+              bodyFont: {{ family: 'JetBrains Mono, monospace', size: 11 }},
+              callbacks: {{ label: function (ctx) {{ return ctx.parsed.x.toFixed(3); }} }}
+            }}
+          }},
+          scales: {{
+            x: {{
+              min: 0, max: 1,
+              ticks: {{ stepSize: 0.2, color: axisColor, font: {{ family: 'JetBrains Mono', size: 10 }} }},
+              grid: {{ color: gridColor }}
+            }},
+            y: {{
+              ticks: {{ color: axisColor, font: {{ family: 'Inter', size: 11, weight: '500' }} }},
+              grid: {{ display: false }}
+            }}
+          }}
+        }}
+      }});
+    }}
+  }})();
+
+  // Expand/collapse result cards — one-at-a-time toggling is ugly
+  // here; we want independent cards so users can compare side by
+  // side. So each click toggles its own card only.
+  document.querySelectorAll('.result-header').forEach(function (h) {{
+    h.addEventListener('click', function () {{
       h.parentElement.classList.toggle('expanded');
     }});
   }});
+
+  // Render Lucide icons once ready
+  (function () {{
+    function draw() {{
+      if (window.lucide) {{ window.lucide.createIcons(); return true; }}
+      return false;
+    }}
+    if (!draw()) {{
+      var tick = setInterval(function () {{ if (draw()) clearInterval(tick); }}, 50);
+    }}
+  }})();
 </script>
 </body>
 </html>"""
@@ -861,9 +1156,7 @@ def save_run_outputs(
         run_name: Folder name override. Defaults to `<model>_<timestamp>`.
         evals: Optional list of `EvalEntry` objects used for the run.
             Forwarded to `generate_html_report` so the per-result
-            expansion panel can show the original test-case data
-            (prompts, ground truth, figures, etc.). Leave as None if
-            you only have an `EvalResult` list.
+            expansion panel can show the original test-case data.
 
     Returns:
         Path to the created run directory.

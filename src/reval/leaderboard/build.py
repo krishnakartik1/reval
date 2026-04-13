@@ -180,14 +180,23 @@ def _assets_dir() -> Path:
 
 
 def get_style_css() -> str:
-    """Return the leaderboard `style.css` contents as a string.
+    """Return the concatenated brand stylesheet as a string.
 
-    Public helper so `reval.report.generate_html_report` can inline the
-    same CSS palette into individual run reports without duplicating the
-    file. Keeps the leaderboard + reports visually in sync — edit
-    `leaderboard/assets/style.css` once, both surfaces update.
+    Combines `tokens.css` (the design token layer — CSS custom
+    properties for colors, typography, spacing, etc.) with `style.css`
+    (custom utilities and component styles that consume those tokens)
+    so that `reval.report.generate_html_report` can inline a single
+    `<style>` block and produce a fully self-contained report.
+
+    The leaderboard itself loads the two files as separate
+    `<link rel="stylesheet">` tags (see `base.html.j2`); this helper
+    only matters for the per-run report, which is shipped as one HTML
+    file.
     """
-    return (_assets_dir() / "style.css").read_text(encoding="utf-8")
+    assets = _assets_dir()
+    tokens = (assets / "tokens.css").read_text(encoding="utf-8")
+    style = (assets / "style.css").read_text(encoding="utf-8")
+    return tokens + "\n\n" + style
 
 
 def build(
