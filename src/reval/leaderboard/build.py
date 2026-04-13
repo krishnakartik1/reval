@@ -203,6 +203,7 @@ def build(
     showcase_dir: Path,
     output_dir: Path,
     include_reports: bool = True,
+    dataset_dir: Path | None = None,
 ) -> None:
     """Render the static leaderboard site.
 
@@ -213,9 +214,17 @@ def build(
             contents are **overwritten file-by-file**; not wiped, so
             sibling files (e.g. a user's `CNAME` or `robots.txt`) are
             preserved.
-        include_reports: If True (default), copy each showcase entry's
-            `report.html` into `public/reports/<slug>.html` so the
-            per-model pages can link to the full dashboard.
+        include_reports: If True (default), put each showcase entry's
+            report into `public/reports/<slug>.html` so the per-model
+            pages can link to the full dashboard.
+        dataset_dir: Optional path to the `evals/datasets/` directory.
+            When provided AND `include_reports=True`, each report is
+            **regenerated** from `showcase/<slug>/results.json` against
+            the current dataset (so the Test case section of every
+            expandable result card shows the actual prompts sent to the
+            model). When None, `public/reports/<slug>.html` is a
+            verbatim copy of `showcase/<slug>/report.html` (old
+            behavior, kept as a fallback when no dataset is available).
     """
     rows = load_rows(showcase_dir)
     categories = _collect_categories(rows)
@@ -284,15 +293,72 @@ def build(
             if asset_file.is_file():
                 shutil.copy2(asset_file, output_dir / "assets" / asset_file.name)
 
-    # Copy report.html files from showcase/ into public/reports/ so the
-    # per-model pages can link to the full interactive dashboard.
+    # Populate public/reports/ with per-run HTML reports.
+    #
+    # When a dataset directory is provided we regenerate each report
+    # from results.json + matching EvalEntry objects so that the Test
+    # case section of every result card shows the actual prompts
+    # sent to the model. This keeps the leaderboard build
+    # idempotent and future-proof: stale showcase reports (written
+    # before PR #18's 3-section expansion, or without evals=) get
+    # refreshed on every build.
+    #
+    # When no dataset directory is provided, fall back to a verbatim
+    # copy of the showcase's report.html — preserves the old behavior
+    # so callers that don't care about prompts don't need to change.
     if include_reports:
         reports_dir = output_dir / "reports"
         reports_dir.mkdir(exist_ok=True)
+
+        matched_evals_by_slug: dict[str, list] = {}
+        if dataset_dir is not None and dataset_dir.exists():
+            # Lazy import — `reval.runner` pulls in provider / judge
+            # SDKs, which `reval leaderboard build` would otherwise
+            # have no reason to load. Importing inside `build()`
+            # keeps the standalone leaderboard command lightweight.
+            from reval.runner import load_evals_from_directory
+
+            all_evals = load_evals_from_directory(dataset_dir, None, None)
+            eval_by_id = {e.id: e for e in all_evals}
+            for row in rows:
+                results_path = showcase_dir / row.slug / "results.json"
+                if not results_path.exists():
+                    continue
+                try:
+                    with results_path.open() as f:
+                        run_data = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    continue
+                eval_ids = run_data.get("eval_ids", [])
+                matched = [eval_by_id[eid] for eid in eval_ids if eid in eval_by_id]
+                if matched:
+                    matched_evals_by_slug[row.slug] = matched
+
+        # Lazy import to avoid circular dependency at module-load time
+        # (reval.report imports reval.leaderboard.get_style_css).
+        from reval.contracts import BenchmarkRun
+        from reval.report import generate_html_report
+
         for row in rows:
-            src = showcase_dir / row.slug / "report.html"
-            if src.exists():
-                shutil.copy2(src, reports_dir / f"{row.slug}.html")
+            src_results = showcase_dir / row.slug / "results.json"
+            src_report = showcase_dir / row.slug / "report.html"
+            dest = reports_dir / f"{row.slug}.html"
+
+            matched_for_row = matched_evals_by_slug.get(row.slug)
+            if matched_for_row and src_results.exists():
+                try:
+                    with src_results.open() as f:
+                        run_data = json.load(f)
+                    run = BenchmarkRun.model_validate(run_data)
+                    generate_html_report(run, dest, evals=matched_for_row)
+                    continue
+                except Exception:  # noqa: BLE001
+                    # Fall through to copy on any rendering error so a
+                    # single broken run doesn't kill the whole build.
+                    pass
+
+            if src_report.exists():
+                shutil.copy2(src_report, dest)
 
 
 # ── Template filters ────────────────────────────────────────────────────

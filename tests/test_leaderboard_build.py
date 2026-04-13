@@ -369,3 +369,88 @@ class TestBuild:
         build(showcase_dir=showcase, output_dir=output)
         assert (output / "index.html").read_text() == first_index
         assert (output / "data" / "leaderboard.json").read_text() == first_json
+
+    def test_regenerates_reports_against_dataset(self, tmp_path: Path) -> None:
+        """With `dataset_dir=`, reports are re-rendered with Test case sections.
+
+        Regression guard for the 'embedded report shows no prompts' bug:
+        a run whose `showcase/<slug>/report.html` predates PR #18 (no
+        3-section expansion) should still produce a fresh report on the
+        public/ side when `reval leaderboard build` is given a dataset.
+        """
+        # Build a tiny showcase with a single issue_framing run
+        showcase_dir = tmp_path / "showcase"
+        entry_slug = "gpt-4o_20260412_120000"
+        _write_showcase_entry(
+            showcase_dir,
+            entry_slug,
+            {
+                **_mock_result("gpt-4o", "openai", 0.88, {"issue_framing": 0.88}),
+                "eval_ids": ["us-issue_framing-001"],
+                "results": [
+                    {
+                        "eval_id": "us-issue_framing-001",
+                        "model_id": "gpt-4o",
+                        "category": "issue_framing",
+                        "raw_response": "Healthcare is a complex policy area...",
+                        "score": 0.88,
+                        "scoring_method": "llm_judge",
+                    }
+                ],
+            },
+            with_report=False,
+        )
+
+        # Build a tiny dataset with ONE matching entry
+        dataset_dir = tmp_path / "datasets" / "us"
+        dataset_dir.mkdir(parents=True)
+        (dataset_dir / "issue_framing.jsonl").write_text(
+            json.dumps(
+                {
+                    "id": "us-issue_framing-001",
+                    "category": "issue_framing",
+                    "country": "us",
+                    "topic": "healthcare",
+                    "prompt": "Explain the debate around universal healthcare.",
+                    "rubric_id": "issue_framing",
+                }
+            )
+            + "\n"
+        )
+
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=True,
+            dataset_dir=tmp_path / "datasets",
+        )
+
+        report_path = output / "reports" / f"{entry_slug}.html"
+        assert report_path.exists(), (
+            "build() should regenerate public/reports/<slug>.html when "
+            "dataset_dir is provided"
+        )
+        content = report_path.read_text()
+
+        # The Test case section should be present, with the actual prompt
+        assert (
+            ">Test case<" in content
+        ), "Regenerated report should include the Test case section header"
+        assert (
+            "Explain the debate around universal healthcare" in content
+        ), "Regenerated report should embed the actual prompt from the dataset"
+
+    def test_reports_fall_back_to_copy_without_dataset(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        """Without `dataset_dir`, build() copies showcase/<slug>/report.html.
+
+        Preserves the pre-fix behavior for callers that don't pass
+        a dataset path. The Test case section won't be regenerated
+        but the file will still exist.
+        """
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output, include_reports=True)
+        # claude-haiku showcase entry had with_report=True in the fixture
+        assert (output / "reports" / "claude-haiku_20260412_120000.html").exists()
