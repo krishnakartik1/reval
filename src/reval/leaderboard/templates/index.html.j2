@@ -1,85 +1,478 @@
 {% extends "base.html.j2" %}
-{% block title %}REVAL — Political Bias Leaderboard{% endblock %}
+{% block title %}REVAL · Political bias leaderboard{% endblock %}
 
 {% block content %}
-<section class="leaderboard">
-  <div class="filters">
-    <label>
-      Provider:
-      <select id="filter-provider" data-filter="provider">
-        <option value="">all</option>
-        {% set providers = rows|map(attribute='model_provider')|unique|list|sort %}
-        {% for provider in providers %}
-          <option value="{{ provider }}">{{ provider }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>
-      Judge:
-      <select id="filter-judge" data-filter="judge">
-        <option value="">all</option>
-        {% set judges = rows|map(attribute='judge_model_id')|reject('none')|unique|list|sort %}
-        {% for judge in judges %}
-          <option value="{{ judge }}">{{ judge }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <span class="row-count"><span id="row-count">{{ rows|length }}</span> runs</span>
-  </div>
+<div
+  class="wrap relative z-[2] pt-16 pb-24"
+  x-data="leaderboardApp()"
+  x-init="init()"
+>
 
-  <table id="leaderboard-table">
-    <thead>
-      <tr>
-        <th class="sortable" data-sort-key="model_id">Model</th>
-        <th class="sortable" data-sort-key="model_provider">Provider</th>
-        <th class="sortable score-col" data-sort-key="overall_score" data-sort-dir="desc">Overall ↓</th>
-        {% for category in categories %}
-        <th class="sortable score-col" data-sort-key="{{ category }}">{{ category|replace('_', ' ') }}</th>
-        {% endfor %}
-        <th class="sortable" data-sort-key="timestamp">Run date</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr
-        data-model_id="{{ row.model_id }}"
-        data-model_provider="{{ row.model_provider }}"
-        data-judge="{{ row.judge_model_id or '' }}"
-        data-provider="{{ row.model_provider }}"
-        data-overall_score="{{ row.overall_score if row.overall_score is not none else -1 }}"
-        data-timestamp="{{ row.timestamp or '' }}"
-        {% for category in categories %}
-        data-{{ category }}="{{ row.category_scores.get(category, -1) }}"
-        {% endfor %}
-      >
-        <td>
-          <a href="models/{{ row.slug }}.html">{{ row.model_id }}</a>
-        </td>
-        <td><span class="provider-chip provider-{{ row.model_provider }}">{{ row.model_provider }}</span></td>
-        <td class="score-cell {{ row.overall_score|score_color }}">
-          {{ row.overall_score|fmt_score }}
-        </td>
-        {% for category in categories %}
-        <td class="score-cell {{ row.category_scores.get(category)|score_color }}">
-          {{ row.category_scores.get(category)|fmt_score }}
-        </td>
-        {% endfor %}
-        <td class="dim">{{ (row.timestamp or '')[:10] }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {# ── HERO ─────────────────────────────────────────────────── #}
 
-  {% if not rows %}
-  <p class="empty-state">No runs in <code>showcase/</code> yet. Run <code>reval run --model &lt;name&gt;</code> and copy the result directory into <code>showcase/</code> to populate this leaderboard.</p>
+  <section class="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-12 lg:gap-20 items-start">
+    <div class="reveal reveal-1">
+      <div class="eyebrow-accent mb-6 flex items-center gap-2">
+        <span class="inline-block w-6 h-px" style="background: var(--accent);"></span>
+        <span>Reval benchmark</span>
+        <span aria-hidden="true">·</span>
+        <span>{{ 2026 }}</span>
+      </div>
+      <h2 class="display" style="font-size: clamp(44px, 7vw, 96px);">
+        Which models<br>
+        <span style="color: var(--accent);" class="italic" >argue</span> fairly.
+      </h2>
+      <p class="mt-8 max-w-xl text-[15px] leading-[1.65]" style="color: var(--fg-dim);">
+        A fact-aligned benchmark for evaluating political bias in large
+        language models, with international coverage. Scored against empirical
+        ground truth — not false symmetry.
+      </p>
+    </div>
+
+    {# Stat strip — sharp numerals, hairline grid #}
+    <div
+      class="grid grid-cols-3 self-end reveal reveal-2 border"
+      style="border-color: var(--border); background: var(--border);"
+    >
+      <div class="p-5 flex flex-col gap-2" style="background: var(--bg);">
+        <div class="eyebrow">Runs</div>
+        <div class="display-md tabular" style="font-size: 40px;" x-text="filteredRows.length"></div>
+      </div>
+      <div class="p-5 flex flex-col gap-2" style="background: var(--bg);">
+        <div class="eyebrow">Providers</div>
+        <div class="display-md tabular" style="font-size: 40px;" x-text="providers.length"></div>
+      </div>
+      <div class="p-5 flex flex-col gap-2" style="background: var(--bg);">
+        <div class="eyebrow">Categories</div>
+        <div class="display-md tabular" style="font-size: 40px;">{{ categories|length }}</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hero-rule reveal reveal-3">
+
+  {# ── FILTER BAR ────────────────────────────────────────────── #}
+
+  <section class="reveal reveal-3 mb-12 flex flex-col gap-6">
+    <div class="flex flex-col lg:flex-row lg:items-end gap-6 lg:gap-10">
+
+      {# Search input #}
+      <div class="flex flex-col gap-3 lg:min-w-[320px]">
+        <label for="reval-search" class="eyebrow">Search models</label>
+        <div class="relative">
+          <i
+            data-lucide="search"
+            class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+            style="color: var(--fg-dim);"
+          ></i>
+          <input
+            id="reval-search"
+            type="text"
+            x-model="search"
+            placeholder="e.g. claude, gpt, nova…"
+            class="pl-10 pr-4 h-10 w-full text-[13px] rounded-full outline-none transition-colors mono"
+            style="background: var(--bg-alt); border: 1px solid var(--border); color: var(--fg);"
+          >
+        </div>
+      </div>
+
+      {# Provider pills #}
+      <div class="flex flex-col gap-3 flex-1 min-w-0">
+        <div class="flex items-center justify-between">
+          <span class="eyebrow">Provider</span>
+          <button
+            x-show="activeProviders.length"
+            @click="activeProviders = []"
+            class="text-[10px] uppercase tracking-[0.14em] hover:underline"
+            style="color: var(--fg-dim);"
+          >clear</button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="p in providers" :key="p">
+            <button
+              class="pill"
+              :data-active="activeProviders.includes(p)"
+              @click="toggleProvider(p)"
+            >
+              <span x-text="p"></span>
+              <span x-show="activeProviders.includes(p)" aria-hidden="true">×</span>
+            </button>
+          </template>
+          <span x-show="providers.length === 0" class="pill pill-ghost">none</span>
+        </div>
+      </div>
+
+      {# Judge pills #}
+      <div class="flex flex-col gap-3 flex-1 min-w-0">
+        <div class="flex items-center justify-between">
+          <span class="eyebrow">Judge</span>
+          <button
+            x-show="activeJudges.length"
+            @click="activeJudges = []"
+            class="text-[10px] uppercase tracking-[0.14em] hover:underline"
+            style="color: var(--fg-dim);"
+          >clear</button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="j in judges" :key="j">
+            <button
+              class="pill"
+              :data-active="activeJudges.includes(j)"
+              @click="toggleJudge(j)"
+              :title="j"
+            >
+              <span class="mono" x-text="shortJudge(j)"></span>
+              <span x-show="activeJudges.includes(j)" aria-hidden="true">×</span>
+            </button>
+          </template>
+          <span x-show="judges.length === 0" class="pill pill-ghost">none</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  {# ── LEADERBOARD TABLE ─────────────────────────────────────── #}
+
+  <section class="reveal reveal-4">
+    <div class="flex items-baseline justify-between mb-4">
+      <div class="eyebrow">Leaderboard</div>
+      <div class="text-[11px] tabular" style="color: var(--fg-dim);">
+        showing <span x-text="sortedFilteredRows.length" class="tabular"></span> of <span class="tabular">{{ rows|length }}</span> runs
+      </div>
+    </div>
+
+    <div class="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+      <table class="leader-table">
+        <thead>
+          <tr>
+            <th style="width:60px"></th>
+            <th @click="sortBy('model_id')" :class="sortKey==='model_id' ? 'sorted-active':''">
+              Model
+              <span x-show="sortKey==='model_id'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
+            </th>
+            <th @click="sortBy('model_provider')" :class="sortKey==='model_provider' ? 'sorted-active':''" class="hidden md:table-cell">
+              Provider
+              <span x-show="sortKey==='model_provider'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
+            </th>
+            <th @click="sortBy('overall_score')" :class="sortKey==='overall_score' ? 'sorted-active':''" class="text-right">
+              Overall
+              <span x-show="sortKey==='overall_score'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
+            </th>
+            {% for category in categories %}
+            <th @click="sortBy('{{ category }}')" :class="sortKey==='{{ category }}' ? 'sorted-active':''" class="text-right hidden lg:table-cell">
+              {{ category|replace('_',' ') }}
+              <span x-show="sortKey==='{{ category }}'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
+            </th>
+            {% endfor %}
+            <th @click="sortBy('timestamp')" :class="sortKey==='timestamp' ? 'sorted-active':''" class="text-right hidden xl:table-cell">
+              Date
+              <span x-show="sortKey==='timestamp'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
+            </th>
+            <th style="width:32px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in sortedFilteredRows" :key="row.slug">
+            <tr @click="window.location='models/'+row.slug+'.html'">
+              <td>
+                <svg
+                  class="radar-svg"
+                  x-init="renderRadar($el, categoryKeys.map(k => row.category_scores[k] ?? 0))"
+                  :aria-label="'Category scores for ' + row.model_id"
+                ></svg>
+              </td>
+              <td>
+                <div class="model-id" x-text="row.model_id"></div>
+                <span class="slug" x-text="row.slug"></span>
+              </td>
+              <td class="hidden md:table-cell">
+                <span
+                  class="provider-chip"
+                  :class="'provider-' + row.model_provider"
+                  x-text="row.model_provider"
+                ></span>
+              </td>
+              <td class="text-right">
+                <span
+                  class="score-cell"
+                  :class="scoreColor(row.overall_score)"
+                  x-text="fmtScore(row.overall_score)"
+                ></span>
+              </td>
+              {% for category in categories %}
+              <td class="text-right hidden lg:table-cell">
+                <span
+                  class="score-cell"
+                  :class="scoreColor(row.category_scores['{{ category }}'])"
+                  x-text="fmtScore(row.category_scores['{{ category }}'])"
+                ></span>
+              </td>
+              {% endfor %}
+              <td class="text-right hidden xl:table-cell text-[11px] tabular" style="color: var(--fg-dim);">
+                <span x-text="(row.timestamp || '').slice(0,10)"></span>
+              </td>
+              <td class="text-right">
+                <i data-lucide="arrow-right" class="w-4 h-4 row-arrow inline-block"></i>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    {# No results — only when filters are active but hide nothing #}
+    <div
+      x-show="allRows.length > 0 && sortedFilteredRows.length === 0"
+      class="mt-12 text-center py-16 text-[13px]"
+      style="color: var(--fg-dim);"
+    >
+      No runs match your filters.
+      <button @click="resetFilters()" class="ml-2 underline hover:text-[color:var(--accent)]">
+        reset
+      </button>
+    </div>
+
+    {# Empty state — no runs in showcase at all #}
+    {% if rows|length == 0 %}
+    <div class="mt-12 py-24 text-center">
+      <div class="eyebrow mb-4">Empty</div>
+      <p class="display-sm text-[28px] mb-6" style="color: var(--fg);">No runs in <code class="mono">showcase/</code> yet.</p>
+      <p class="text-[13px] max-w-lg mx-auto" style="color: var(--fg-dim);">
+        Run <code class="mono" style="color: var(--fg);">reval run --model &lt;name&gt;</code> and
+        copy the result directory into <code class="mono" style="color: var(--fg);">showcase/</code>
+        to populate this leaderboard.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  {# ── SCATTER: overall_score × completed_evals ─────────────── #}
+
+  {% if rows|length > 0 %}
+  <section class="mt-24 reveal reveal-4">
+    <div class="flex items-baseline justify-between mb-4">
+      <div class="eyebrow">Distribution</div>
+      <div class="text-[11px]" style="color: var(--fg-dim);">
+        overall score × coverage
+      </div>
+    </div>
+    <div class="scatter-card">
+      <div style="height: 320px;">
+        <canvas id="scatterChart"></canvas>
+      </div>
+    </div>
+  </section>
   {% endif %}
 
-  <p class="footnote">
-    Judge and embeddings models vary across runs — see the run date and the per-model detail page for exact settings. Mixing judges across rows can make direct comparisons misleading; prefer runs that share a judge.
-  </p>
-</section>
-{% endblock %}
+  {# ── Footnote ──────────────────────────────────────────────── #}
 
-{% block scripts %}
-<script src="assets/sort.js"></script>
+  <p class="mt-16 text-[11px] leading-[1.65] max-w-3xl" style="color: var(--fg-dim);">
+    Judge and embeddings models vary across runs — see each per-model detail
+    page for exact settings. Mixing judges across rows can make direct
+    comparisons misleading; prefer runs that share a judge.
+  </p>
+
+</div>
+
+{# ── Embedded row data for the Alpine component ─────────────── #}
+<script id="leaderboard-data" type="application/json">{{ leaderboard_data | tojson | safe }}</script>
+
+<script>
+  function leaderboardApp() {
+    var data;
+    try {
+      data = JSON.parse(document.getElementById('leaderboard-data').textContent);
+    } catch (e) {
+      data = { rows: [], categories: [] };
+    }
+
+    return {
+      allRows: data.rows || [],
+      categoryKeys: data.categories || [],
+
+      search: '',
+      sortKey: 'overall_score',
+      sortDir: 'desc',
+      activeProviders: [],
+      activeJudges: [],
+
+      init() {
+        this.$nextTick(() => {
+          this.renderScatter();
+          if (window.lucide) lucide.createIcons();
+        });
+      },
+
+      get providers() {
+        var set = {};
+        this.allRows.forEach(r => { if (r.model_provider) set[r.model_provider] = true; });
+        return Object.keys(set).sort();
+      },
+
+      get judges() {
+        var set = {};
+        this.allRows.forEach(r => { if (r.judge_model_id) set[r.judge_model_id] = true; });
+        return Object.keys(set).sort();
+      },
+
+      shortJudge(id) {
+        if (!id) return '';
+        // Take the last path component after /, :, or .
+        var parts = id.split(/[/:.]/);
+        return parts[parts.length - 1] || id;
+      },
+
+      toggleProvider(p) {
+        var idx = this.activeProviders.indexOf(p);
+        if (idx >= 0) this.activeProviders.splice(idx, 1);
+        else this.activeProviders.push(p);
+      },
+
+      toggleJudge(j) {
+        var idx = this.activeJudges.indexOf(j);
+        if (idx >= 0) this.activeJudges.splice(idx, 1);
+        else this.activeJudges.push(j);
+      },
+
+      resetFilters() {
+        this.search = '';
+        this.activeProviders = [];
+        this.activeJudges = [];
+      },
+
+      matchesFilters(row) {
+        if (this.search) {
+          var q = this.search.toLowerCase();
+          var hay = (row.model_id || '').toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        if (this.activeProviders.length && this.activeProviders.indexOf(row.model_provider) === -1) {
+          return false;
+        }
+        if (this.activeJudges.length && this.activeJudges.indexOf(row.judge_model_id) === -1) {
+          return false;
+        }
+        return true;
+      },
+
+      get filteredRows() {
+        return this.allRows.filter(r => this.matchesFilters(r));
+      },
+
+      get sortedFilteredRows() {
+        var key = this.sortKey;
+        var dir = this.sortDir === 'asc' ? 1 : -1;
+        var cats = this.categoryKeys;
+        return this.filteredRows.slice().sort(function (a, b) {
+          var av, bv;
+          if (cats.indexOf(key) >= 0) {
+            av = a.category_scores[key];
+            bv = b.category_scores[key];
+          } else {
+            av = a[key];
+            bv = b[key];
+          }
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+          return String(av).localeCompare(String(bv)) * dir;
+        });
+      },
+
+      sortBy(key) {
+        if (this.sortKey === key) {
+          this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortKey = key;
+          this.sortDir = 'desc';
+        }
+      },
+
+      scoreColor(score) {
+        if (score == null) return 'score-none';
+        if (score >= 0.85) return 'score-high';
+        if (score >= 0.70) return 'score-mid';
+        return 'score-low';
+      },
+
+      fmtScore(score) {
+        if (score == null) return '—';
+        return Number(score).toFixed(3);
+      },
+
+      renderScatter() {
+        var canvas = document.getElementById('scatterChart');
+        if (!canvas || !window.Chart) return;
+        var rows = this.allRows.filter(r => r.overall_score != null);
+        if (rows.length === 0) return;
+
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+          || (!document.documentElement.getAttribute('data-theme')
+              && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+        var axisColor = isDark ? 'rgba(143,138,126,0.8)' : 'rgba(107,102,96,0.85)';
+        var gridColor = isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)';
+        var accent    = isDark ? '#d47a47' : '#a85c32';
+
+        var points = rows.map(function (r) {
+          return { x: r.completed_evals || 0, y: r.overall_score, label: r.model_id };
+        });
+
+        new Chart(canvas.getContext('2d'), {
+          type: 'scatter',
+          data: {
+            datasets: [{
+              data: points,
+              backgroundColor: accent + 'cc',
+              borderColor: accent,
+              borderWidth: 1.2,
+              pointRadius: 6,
+              pointHoverRadius: 9,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: isDark ? '#17140f' : '#faf8f3',
+                titleColor: isDark ? '#f5f0e3' : '#1a1a1a',
+                bodyColor: isDark ? '#d4cfc0' : '#3d3d3d',
+                borderColor: accent,
+                borderWidth: 1,
+                padding: 12,
+                titleFont: { family: 'JetBrains Mono, monospace', size: 12, weight: '500' },
+                bodyFont: { family: 'Inter, sans-serif', size: 11 },
+                callbacks: {
+                  title: function (items) { return items[0].raw.label; },
+                  label: function (ctx) {
+                    return 'overall ' + ctx.raw.y.toFixed(3) + ' · ' + ctx.raw.x + ' evals';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: 'evals completed', color: axisColor, font: { family: 'Inter', size: 10, weight: '500' } },
+                ticks: { color: axisColor, font: { family: 'JetBrains Mono, monospace', size: 10 } },
+                grid: { color: gridColor }
+              },
+              y: {
+                title: { display: true, text: 'overall score', color: axisColor, font: { family: 'Inter', size: 10, weight: '500' } },
+                min: 0.5,
+                max: 1,
+                ticks: { color: axisColor, font: { family: 'JetBrains Mono, monospace', size: 10 } },
+                grid: { color: gridColor }
+              }
+            }
+          }
+        });
+      }
+    };
+  }
+</script>
 {% endblock %}
+</content>

@@ -302,7 +302,8 @@ class TestBuild:
         build(showcase_dir=showcase, output_dir=output)
 
         assert (output / "assets" / "style.css").exists()
-        assert (output / "assets" / "sort.js").exists()
+        assert (output / "assets" / "tokens.css").exists()
+        assert (output / "assets" / "radar.js").exists()
 
     def test_copies_report_html_when_requested(
         self, showcase: Path, tmp_path: Path
