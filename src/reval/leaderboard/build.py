@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
@@ -38,6 +39,29 @@ from pydantic import BaseModel, Field
 #: Currently unused (every row is a distinct run), but reserved for a
 #: future "show N most recent runs per model" filter.
 _MAX_ROWS_PER_MODEL = 10
+
+
+@dataclass
+class BuildReport:
+    """Diagnostic counters emitted by `build()` for the CLI to print.
+
+    Only populated when `dataset_dir` is provided to `build()`. With no
+    dataset, every per-run report is a verbatim copy of the showcase
+    `report.html` and drift can't be measured.
+    """
+
+    #: Slugs where some (but not all) eval IDs from the run still exist
+    #: in the current dataset. Tuple: (slug, matched_count, total_count).
+    #: Cards for the missing IDs render without a Test case section.
+    partial_matches: list[tuple[str, int, int]] = field(default_factory=list)
+
+    #: Slugs with zero dataset matches where we fell back to copying
+    #: `showcase/<slug>/report.html`. The copy may be stale.
+    unmatched_copied: list[str] = field(default_factory=list)
+
+    #: Slugs with zero dataset matches AND no showcase `report.html` to
+    #: fall back to — no per-run report is published at all.
+    unmatched_missing: list[str] = field(default_factory=list)
 
 
 class LeaderboardRow(BaseModel):
@@ -203,7 +227,8 @@ def build(
     showcase_dir: Path,
     output_dir: Path,
     include_reports: bool = True,
-) -> None:
+    dataset_dir: Path | None = None,
+) -> BuildReport:
     """Render the static leaderboard site.
 
     Args:
@@ -213,10 +238,20 @@ def build(
             contents are **overwritten file-by-file**; not wiped, so
             sibling files (e.g. a user's `CNAME` or `robots.txt`) are
             preserved.
-        include_reports: If True (default), copy each showcase entry's
-            `report.html` into `public/reports/<slug>.html` so the
-            per-model pages can link to the full dashboard.
+        include_reports: If True (default), put each showcase entry's
+            report into `public/reports/<slug>.html` so the per-model
+            pages can link to the full dashboard.
+        dataset_dir: Optional path to the `evals/datasets/` directory.
+            When provided AND `include_reports=True`, each report is
+            **regenerated** from `showcase/<slug>/results.json` against
+            the current dataset (so the Test case section of every
+            expandable result card shows the actual prompts sent to the
+            model). When None, `public/reports/<slug>.html` is a
+            verbatim copy of `showcase/<slug>/report.html` (old
+            behavior, kept as a fallback when no dataset is available).
     """
+    build_report = BuildReport()
+
     rows = load_rows(showcase_dir)
     categories = _collect_categories(rows)
     avg_scores = _average_category_scores(rows, categories)
@@ -284,15 +319,91 @@ def build(
             if asset_file.is_file():
                 shutil.copy2(asset_file, output_dir / "assets" / asset_file.name)
 
-    # Copy report.html files from showcase/ into public/reports/ so the
-    # per-model pages can link to the full interactive dashboard.
+    # Populate public/reports/ with per-run HTML reports.
+    #
+    # When a dataset directory is provided we regenerate each report
+    # from results.json + matching EvalEntry objects so that the Test
+    # case section of every result card shows the actual prompts
+    # sent to the model. This keeps the leaderboard build
+    # idempotent and future-proof: stale showcase reports (written
+    # before PR #18's 3-section expansion, or without evals=) get
+    # refreshed on every build.
+    #
+    # When no dataset directory is provided, fall back to a verbatim
+    # copy of the showcase's report.html — preserves the old behavior
+    # so callers that don't care about prompts don't need to change.
     if include_reports:
         reports_dir = output_dir / "reports"
         reports_dir.mkdir(exist_ok=True)
+
+        matched_evals_by_slug: dict[str, list] = {}
+        eval_ids_by_slug: dict[str, list[str]] = {}
+        dataset_provided = dataset_dir is not None and dataset_dir.exists()
+        if dataset_provided and dataset_dir is not None:
+            # Lazy import — `reval.runner` pulls in provider / judge
+            # SDKs, which `reval leaderboard build` would otherwise
+            # have no reason to load. Importing inside `build()`
+            # keeps the standalone leaderboard command lightweight.
+            from reval.runner import load_evals_from_directory
+
+            all_evals = load_evals_from_directory(dataset_dir, None, None)
+            eval_by_id = {e.id: e for e in all_evals}
+            for row in rows:
+                results_path = showcase_dir / row.slug / "results.json"
+                if not results_path.exists():
+                    continue
+                try:
+                    with results_path.open() as f:
+                        run_data = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    continue
+                eval_ids = run_data.get("eval_ids", [])
+                eval_ids_by_slug[row.slug] = eval_ids
+                matched = [eval_by_id[eid] for eid in eval_ids if eid in eval_by_id]
+                if matched:
+                    matched_evals_by_slug[row.slug] = matched
+
+        # Lazy import to avoid circular dependency at module-load time
+        # (reval.report imports reval.leaderboard.get_style_css).
+        from reval.contracts import BenchmarkRun
+        from reval.report import generate_html_report
+
         for row in rows:
-            src = showcase_dir / row.slug / "report.html"
-            if src.exists():
-                shutil.copy2(src, reports_dir / f"{row.slug}.html")
+            src_results = showcase_dir / row.slug / "results.json"
+            src_report = showcase_dir / row.slug / "report.html"
+            dest = reports_dir / f"{row.slug}.html"
+
+            matched_for_row = matched_evals_by_slug.get(row.slug)
+            if matched_for_row and src_results.exists():
+                try:
+                    with src_results.open() as f:
+                        run_data = json.load(f)
+                    run = BenchmarkRun.model_validate(run_data)
+                    generate_html_report(run, dest, evals=matched_for_row)
+                    total_ids = len(eval_ids_by_slug.get(row.slug, []))
+                    if total_ids > len(matched_for_row):
+                        build_report.partial_matches.append(
+                            (row.slug, len(matched_for_row), total_ids)
+                        )
+                    continue
+                except Exception:  # noqa: BLE001
+                    # Fall through to copy on any rendering error so a
+                    # single broken run doesn't kill the whole build.
+                    pass
+
+            # Track drift only when a dataset was provided AND the run
+            # had eval_ids to check against. Legacy runs without
+            # `eval_ids` predate the tracking and aren't "drift".
+            if dataset_provided and eval_ids_by_slug.get(row.slug):
+                if src_report.exists():
+                    build_report.unmatched_copied.append(row.slug)
+                else:
+                    build_report.unmatched_missing.append(row.slug)
+
+            if src_report.exists():
+                shutil.copy2(src_report, dest)
+
+    return build_report
 
 
 # ── Template filters ────────────────────────────────────────────────────

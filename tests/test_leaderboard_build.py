@@ -369,3 +369,202 @@ class TestBuild:
         build(showcase_dir=showcase, output_dir=output)
         assert (output / "index.html").read_text() == first_index
         assert (output / "data" / "leaderboard.json").read_text() == first_json
+
+    def test_regenerates_reports_against_dataset(self, tmp_path: Path) -> None:
+        """With `dataset_dir=`, reports are re-rendered with Test case sections.
+
+        Regression guard for the 'embedded report shows no prompts' bug:
+        a run whose `showcase/<slug>/report.html` predates PR #18 (no
+        3-section expansion) should still produce a fresh report on the
+        public/ side when `reval leaderboard build` is given a dataset.
+        """
+        # Build a tiny showcase with a single issue_framing run
+        showcase_dir = tmp_path / "showcase"
+        entry_slug = "gpt-4o_20260412_120000"
+        _write_showcase_entry(
+            showcase_dir,
+            entry_slug,
+            {
+                **_mock_result("gpt-4o", "openai", 0.88, {"issue_framing": 0.88}),
+                "eval_ids": ["us-issue_framing-001"],
+                "results": [
+                    {
+                        "eval_id": "us-issue_framing-001",
+                        "model_id": "gpt-4o",
+                        "category": "issue_framing",
+                        "raw_response": "Healthcare is a complex policy area...",
+                        "score": 0.88,
+                        "scoring_method": "llm_judge",
+                    }
+                ],
+            },
+            with_report=False,
+        )
+
+        # Build a tiny dataset with ONE matching entry
+        dataset_dir = tmp_path / "datasets" / "us"
+        dataset_dir.mkdir(parents=True)
+        (dataset_dir / "issue_framing.jsonl").write_text(
+            json.dumps(
+                {
+                    "id": "us-issue_framing-001",
+                    "category": "issue_framing",
+                    "country": "us",
+                    "topic": "healthcare",
+                    "prompt": "Explain the debate around universal healthcare.",
+                    "rubric_id": "issue_framing",
+                }
+            )
+            + "\n"
+        )
+
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=True,
+            dataset_dir=tmp_path / "datasets",
+        )
+
+        report_path = output / "reports" / f"{entry_slug}.html"
+        assert report_path.exists(), (
+            "build() should regenerate public/reports/<slug>.html when "
+            "dataset_dir is provided"
+        )
+        content = report_path.read_text()
+
+        # The Test case section should be present, with the actual prompt
+        assert (
+            ">Test case<" in content
+        ), "Regenerated report should include the Test case section header"
+        assert (
+            "Explain the debate around universal healthcare" in content
+        ), "Regenerated report should embed the actual prompt from the dataset"
+
+    def test_reports_fall_back_to_copy_without_dataset(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        """Without `dataset_dir`, build() copies showcase/<slug>/report.html.
+
+        Preserves the pre-fix behavior for callers that don't pass
+        a dataset path. The Test case section won't be regenerated
+        but the file will still exist.
+        """
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output, include_reports=True)
+        # claude-haiku showcase entry had with_report=True in the fixture
+        assert (output / "reports" / "claude-haiku_20260412_120000.html").exists()
+
+    def test_build_report_flags_partial_dataset_match(self, tmp_path: Path) -> None:
+        """A run with 3 eval_ids where only 2 exist in the dataset
+        should be tracked as a partial match in the returned BuildReport.
+        """
+        showcase_dir = tmp_path / "showcase"
+        entry_slug = "gpt-4o_20260412_120000"
+        _write_showcase_entry(
+            showcase_dir,
+            entry_slug,
+            {
+                **_mock_result("gpt-4o", "openai", 0.88, {"issue_framing": 0.88}),
+                "eval_ids": [
+                    "us-issue_framing-001",
+                    "us-issue_framing-002",
+                    "us-issue_framing-999",  # not in dataset
+                ],
+                "results": [
+                    {
+                        "eval_id": "us-issue_framing-001",
+                        "model_id": "gpt-4o",
+                        "category": "issue_framing",
+                        "raw_response": "Response A",
+                        "score": 0.9,
+                        "scoring_method": "llm_judge",
+                    },
+                ],
+            },
+        )
+
+        dataset_dir = tmp_path / "datasets" / "us"
+        dataset_dir.mkdir(parents=True)
+        lines = [
+            json.dumps(
+                {
+                    "id": "us-issue_framing-001",
+                    "category": "issue_framing",
+                    "country": "us",
+                    "topic": "healthcare",
+                    "prompt": "Prompt 1",
+                    "rubric_id": "issue_framing",
+                }
+            ),
+            json.dumps(
+                {
+                    "id": "us-issue_framing-002",
+                    "category": "issue_framing",
+                    "country": "us",
+                    "topic": "education",
+                    "prompt": "Prompt 2",
+                    "rubric_id": "issue_framing",
+                }
+            ),
+        ]
+        (dataset_dir / "issue_framing.jsonl").write_text("\n".join(lines) + "\n")
+
+        output = tmp_path / "public"
+        report = build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=True,
+            dataset_dir=tmp_path / "datasets",
+        )
+
+        assert report.partial_matches == [(entry_slug, 2, 3)]
+        assert report.unmatched_copied == []
+        assert report.unmatched_missing == []
+
+    def test_build_report_flags_unmatched_copied(self, tmp_path: Path) -> None:
+        """A run with eval_ids that none exist in the dataset should be
+        tracked as unmatched_copied when a showcase report.html exists.
+        """
+        showcase_dir = tmp_path / "showcase"
+        entry_slug = "orphan_20260412_120000"
+        _write_showcase_entry(
+            showcase_dir,
+            entry_slug,
+            {
+                **_mock_result("gpt-4o", "openai", 0.88, {"issue_framing": 0.88}),
+                "eval_ids": ["us-issue_framing-999"],
+                "results": [],
+            },
+            with_report=True,
+        )
+
+        dataset_dir = tmp_path / "datasets" / "us"
+        dataset_dir.mkdir(parents=True)
+        (dataset_dir / "issue_framing.jsonl").write_text(
+            json.dumps(
+                {
+                    "id": "us-issue_framing-001",
+                    "category": "issue_framing",
+                    "country": "us",
+                    "topic": "healthcare",
+                    "prompt": "Prompt 1",
+                    "rubric_id": "issue_framing",
+                }
+            )
+            + "\n"
+        )
+
+        output = tmp_path / "public"
+        report = build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=True,
+            dataset_dir=tmp_path / "datasets",
+        )
+
+        assert report.partial_matches == []
+        assert report.unmatched_copied == [entry_slug]
+        assert report.unmatched_missing == []
+        # Old showcase report still copied as the fallback
+        assert (output / "reports" / f"{entry_slug}.html").exists()

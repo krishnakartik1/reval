@@ -69,4 +69,3 @@
 
   global.renderRadar = renderRadar;
 })(window);
-</content>

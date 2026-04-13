@@ -366,7 +366,18 @@ def leaderboard_build(
     include_reports: bool = typer.Option(
         True,
         "--include-reports/--no-include-reports",
-        help="Copy each showcase entry's report.html into public/reports/",
+        help="Generate per-run HTML reports into public/reports/",
+    ),
+    dataset: Path = typer.Option(
+        _DEFAULT_DATASET,
+        "--dataset",
+        "-d",
+        help=(
+            "Path to evals/datasets/ — used to regenerate each per-run report "
+            "against the current dataset so the Test case section shows the "
+            "actual prompts. Pass a non-existent path to fall back to copying "
+            "showcase/<slug>/report.html verbatim."
+        ),
     ),
 ) -> None:
     """Render the static leaderboard site from `showcase/*/results.json`.
@@ -392,7 +403,51 @@ def leaderboard_build(
     else:
         console.print(f"Found [green]{len(rows)}[/green] runs.")
 
-    build(showcase_dir=showcase, output_dir=output, include_reports=include_reports)
+    dataset_dir = dataset if dataset.exists() else None
+    if include_reports:
+        if dataset_dir is None:
+            console.print(
+                f"[yellow]Dataset not found at {dataset} — reports will be "
+                "copied verbatim without refreshing the Test case section.[/yellow]"
+            )
+        else:
+            console.print(f"[cyan]Regenerating reports against {dataset_dir}...[/cyan]")
+
+    report = build(
+        showcase_dir=showcase,
+        output_dir=output,
+        include_reports=include_reports,
+        dataset_dir=dataset_dir,
+    )
+
+    if report.partial_matches:
+        console.print(
+            "\n[yellow]⚠ Dataset drift: some eval IDs in these runs are no "
+            "longer in the dataset. Cards for missing IDs will render "
+            "without a Test case section:[/yellow]"
+        )
+        for slug, matched_count, total_count in report.partial_matches:
+            console.print(
+                f"  [yellow]•[/yellow] {slug}: "
+                f"[bold]{matched_count}/{total_count}[/bold] prompts found"
+            )
+
+    if report.unmatched_copied:
+        console.print(
+            "\n[yellow]⚠ Zero dataset matches — falling back to the verbatim "
+            "showcase/<slug>/report.html, which may be stale:[/yellow]"
+        )
+        for slug in report.unmatched_copied:
+            console.print(f"  [yellow]•[/yellow] {slug}")
+
+    if report.unmatched_missing:
+        console.print(
+            "\n[red]✗ Zero dataset matches AND no showcase report.html to fall "
+            "back to — no per-run report published for:[/red]"
+        )
+        for slug in report.unmatched_missing:
+            console.print(f"  [red]•[/red] {slug}")
+
     console.print(f"\n[green]Static site written to {output}/[/green]")
     console.print(f"[green]Preview: [/green]python -m http.server --directory {output}")
     console.print(
