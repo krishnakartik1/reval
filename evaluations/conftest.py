@@ -42,8 +42,20 @@ def _ollama_has_model(model_name: str, host: str = "localhost", port: int = 1143
     """Return True if Ollama has `model_name` pulled locally.
 
     Queries `/api/tags` and checks the installed model list. Tolerates
-    Ollama's name quirks — `gemma4:e2b` may appear literally or with a
-    quantization suffix like `gemma4:e2b-q4_0`.
+    Ollama's two tagging quirks:
+
+    1. **Default `:latest` tag.** `ollama pull nomic-embed-text` installs
+       the model as `nomic-embed-text:latest`. A query for `nomic-embed-text`
+       should match.
+    2. **Quantization suffixes.** `gemma4:e2b` may appear literally or as
+       `gemma4:e2b-q4_0`. A query for `gemma4:e2b` should match either.
+
+    The match rules:
+    - Exact match wins.
+    - If the query has no explicit tag (`":"` not in `model_name`),
+      also match `name == f"{model_name}:latest"`.
+    - Always also match `name.startswith(f"{model_name}-")` to cover the
+      quantization-suffix case, which Ollama uses for tagged variants.
     """
     url = f"http://{host}:{port}/api/tags"
     try:
@@ -53,6 +65,8 @@ def _ollama_has_model(model_name: str, host: str = "localhost", port: int = 1143
         return False
     installed = {m.get("name", "") for m in data.get("models", [])}
     if model_name in installed:
+        return True
+    if ":" not in model_name and f"{model_name}:latest" in installed:
         return True
     return any(name.startswith(f"{model_name}-") for name in installed)
 

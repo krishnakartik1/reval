@@ -122,8 +122,9 @@ class TestJudgeRefactor:
 
     @pytest.mark.eval
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("ollama_available")
     async def test_ollama_judge_parses_real_response(
-        self, ollama_available: bool, require_ollama_model
+        self, require_ollama_model
     ) -> None:
         """gemma4:e2b on Ollama produces parseable rubric scores.
 
@@ -180,8 +181,9 @@ class TestParityJudgeRefactor:
 
     @pytest.mark.eval
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("ollama_available")
     async def test_ollama_parity_judge_parses_real_response(
-        self, ollama_available: bool, require_ollama_model
+        self, require_ollama_model
     ) -> None:
         """gemma4:e2b on Ollama produces parseable parity scores."""
         require_ollama_model("gemma4:e2b")
@@ -208,8 +210,9 @@ class TestOllamaEmbeddingsReal:
 
     @pytest.mark.eval
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("ollama_available")
     async def test_get_embedding_returns_vector(
-        self, ollama_available: bool, require_ollama_model
+        self, require_ollama_model
     ) -> None:
         """Ollama's /api/embeddings returns a usable numpy vector."""
         require_ollama_model("nomic-embed-text")

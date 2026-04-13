@@ -175,9 +175,8 @@ class TestOllamaProviderReal:
 
     @pytest.mark.eval
     @pytest.mark.asyncio
-    async def test_acomplete(
-        self, ollama_available: bool, require_ollama_model
-    ) -> None:
+    @pytest.mark.usefixtures("ollama_available")
+    async def test_acomplete(self, require_ollama_model) -> None:
         """OllamaProvider returns a non-empty response via the OpenAI-compat path."""
         require_ollama_model("gemma4:e2b")
         from reval.providers.ollama import OllamaProvider
@@ -187,9 +186,8 @@ class TestOllamaProviderReal:
 
     @pytest.mark.eval
     @pytest.mark.asyncio
-    async def test_model_override(
-        self, ollama_available: bool, require_ollama_model
-    ) -> None:
+    @pytest.mark.usefixtures("ollama_available")
+    async def test_model_override(self, require_ollama_model) -> None:
         """OllamaProvider works with an explicit model_id override."""
         require_ollama_model("qwen2.5:7b")
         from reval.providers.ollama import OllamaProvider
