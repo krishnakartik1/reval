@@ -163,6 +163,46 @@ class TestBedrockProviderReal:
         await _assert_valid_completion(provider)
 
 
+class TestOllamaProviderReal:
+    """Live tests gated on Ollama running at localhost:11434.
+
+    Uses two layered skips: `ollama_available` for "is the server up?"
+    and `require_ollama_model(name)` for "is this specific model
+    pulled?". Together they keep the tests precise and actionable —
+    missing-model errors surface as skips with an `ollama pull ...`
+    hint instead of crashing the test run.
+    """
+
+    @pytest.mark.eval
+    @pytest.mark.asyncio
+    async def test_acomplete(
+        self, ollama_available: bool, require_ollama_model
+    ) -> None:
+        """OllamaProvider returns a non-empty response via the OpenAI-compat path."""
+        require_ollama_model("gemma4:e2b")
+        from reval.providers.ollama import OllamaProvider
+
+        provider = OllamaProvider(model_id="gemma4:e2b")
+        await _assert_valid_completion(provider)
+
+    @pytest.mark.eval
+    @pytest.mark.asyncio
+    async def test_model_override(
+        self, ollama_available: bool, require_ollama_model
+    ) -> None:
+        """OllamaProvider works with an explicit model_id override."""
+        require_ollama_model("qwen2.5:7b")
+        from reval.providers.ollama import OllamaProvider
+
+        provider = OllamaProvider(model_id="qwen2.5:7b")
+        result = await provider.acomplete(
+            system=SIMPLE_SYSTEM,
+            user="List 3 facts about the number 7. Be brief.",
+            max_tokens=300,
+        )
+        assert len(result.text.strip()) > 10
+
+
 class TestProviderParity:
     """Compare outputs across all providers whose credentials are set."""
 

@@ -26,6 +26,9 @@ def config_file(tmp_path):
             "region": "us-west-2",
             "max_concurrent": 10,
             "similarity_threshold": 0.90,
+            "target": "claude-sonnet-4",
+            "judge": "nova-pro",
+            "embeddings": "titan-v2",
         },
         "models": {
             "claude-haiku-bedrock": {
@@ -44,9 +47,19 @@ def config_file(tmp_path):
                 "provider": "minimax",
                 "model_id": "MiniMax-M2.7",
             },
+            "gemma4-e2b-local": {
+                "provider": "ollama",
+                "model_id": "gemma4:e2b",
+            },
+            "nova-pro": {
+                "provider": "bedrock",
+                "model_id": "amazon.nova-pro-v1:0",
+            },
+            "titan-v2": {
+                "provider": "bedrock",
+                "model_id": "amazon.titan-embed-text-v2:0",
+            },
         },
-        "judge": {"model_id": "amazon.nova-pro-v1:0"},
-        "embeddings": {"model_id": "amazon.titan-embed-text-v2:0"},
     }
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.dump(config_data))
@@ -59,32 +72,33 @@ class TestLoadConfig:
         assert config.region == "us-west-2"
         assert config.max_concurrent == 10
         assert config.similarity_threshold == 0.90
-        assert config.judge_model_id == "amazon.nova-pro-v1:0"
-        assert config.embeddings_model_id == "amazon.titan-embed-text-v2:0"
+        assert config.default_target == "claude-sonnet-4"
+        assert config.default_judge == "nova-pro"
+        assert config.default_embeddings == "titan-v2"
         assert "claude-haiku-bedrock" in config.models
         assert "claude-sonnet-4" in config.models
         assert "gpt-4o" in config.models
         assert "minimax-m2-7" in config.models
+        assert "gemma4-e2b-local" in config.models
 
     def test_missing_file_returns_defaults(self, tmp_path):
         config = load_config(tmp_path / "nonexistent.yaml")
         assert config.region == "us-east-1"
         assert config.max_concurrent == 5
         assert config.similarity_threshold == 0.85
-        assert config.judge_model_id == "amazon.nova-lite-v1:0"
-        assert config.embeddings_model_id == "amazon.titan-embed-text-v2:0"
+        assert config.default_target == "claude-haiku-3-5"
+        assert config.default_judge == "nova-lite"
+        assert config.default_embeddings == "titan-v2"
         assert config.models == {}
 
     def test_partial_config(self, tmp_path):
         """Config with only some fields still returns defaults for the rest."""
         config_path = tmp_path / "partial.yaml"
-        config_path.write_text(
-            yaml.dump({"judge": {"model_id": "amazon.nova-pro-v1:0"}})
-        )
+        config_path.write_text(yaml.dump({"defaults": {"judge": "nova-pro"}}))
         config = load_config(config_path)
-        assert config.judge_model_id == "amazon.nova-pro-v1:0"
+        assert config.default_judge == "nova-pro"
         assert config.region == "us-east-1"  # default
-        assert config.embeddings_model_id == "amazon.titan-embed-text-v2:0"  # default
+        assert config.default_embeddings == "titan-v2"  # default
 
     def test_empty_file(self, tmp_path):
         config_path = tmp_path / "empty.yaml"

@@ -8,8 +8,8 @@ import pytest
 import yaml
 
 from reval.contracts import Rubric, RubricCriterion
-from reval.scoring.judge import BedrockJudge
-from reval.scoring.parity import ParityJudge
+from reval.scoring.judge import parse_judge_response
+from reval.scoring.parity import parse_parity_response
 from reval.scoring.rubric import (
     compute_weighted_score,
     format_rubric_for_judge,
@@ -128,7 +128,7 @@ class TestIsConsistent:
 class TestScorePolicyAttribution:
     @pytest.mark.asyncio
     async def test_high_similarity_means_low_bias(self):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         from reval.contracts import CounterfactualPair
 
@@ -139,6 +139,10 @@ class TestScorePolicyAttribution:
             entity_b="B",
             policy_topic="test",
         )
+        # `embeddings_client` is now required — inject a mock since
+        # `compute_semantic_similarity` is patched above and never
+        # actually calls through to the client.
+        mock_embeddings = MagicMock()
         with patch(
             "reval.scoring.similarity.compute_semantic_similarity",
             new_callable=AsyncMock,
@@ -150,6 +154,7 @@ class TestScorePolicyAttribution:
                 response_b="Response B",
                 eval_id="test-001",
                 model_id="test-model",
+                embeddings_client=mock_embeddings,
             )
         assert result.score == pytest.approx(0.92)
         assert result.similarity_score == pytest.approx(0.92)
@@ -272,45 +277,40 @@ class TestLoadRubric:
 
 class TestJudgeParsing:
     def test_parse_valid_json(self):
-        judge = BedrockJudge()
         response = json.dumps(
             {
                 "scores": {"accuracy": 4, "tone": 3},
                 "reasoning": "Good overall balance.",
             }
         )
-        scores, reasoning = judge._parse_judge_response(response)
+        scores, reasoning = parse_judge_response(response)
         assert scores == {"accuracy": 4, "tone": 3}
         assert "balance" in reasoning
 
     def test_parse_json_with_surrounding_text(self):
-        judge = BedrockJudge()
         response = (
             'Here is my evaluation:\n{"scores": {"a": 5}, "reasoning": "ok"}\nDone.'
         )
-        scores, reasoning = judge._parse_judge_response(response)
+        scores, reasoning = parse_judge_response(response)
         assert scores == {"a": 5}
 
     def test_parse_no_json_raises(self):
-        judge = BedrockJudge()
         with pytest.raises(ValueError, match="Could not parse"):
-            judge._parse_judge_response("no json here at all")
+            parse_judge_response("no json here at all")
 
     def test_parse_dict_reasoning(self):
-        judge = BedrockJudge()
         response = json.dumps(
             {
                 "scores": {"a": 3},
                 "reasoning": {"accuracy": "good", "tone": "neutral"},
             }
         )
-        scores, reasoning = judge._parse_judge_response(response)
+        scores, reasoning = parse_judge_response(response)
         assert "accuracy: good" in reasoning
 
 
 class TestParityJudgeParsing:
     def test_parse_valid_response(self):
-        judge = ParityJudge()
         response = json.dumps(
             {
                 "position_a_metrics": {"depth": 4, "rhetoric": 3},
@@ -319,18 +319,16 @@ class TestParityJudgeParsing:
                 "reasoning": "Balanced arguments.",
             }
         )
-        score, metrics, reasoning = judge._parse_response(response)
+        score, metrics, reasoning = parse_parity_response(response)
         assert score == 0.85
         assert "position_a" in metrics
         assert "position_b" in metrics
 
     def test_parse_no_json_raises(self):
-        judge = ParityJudge()
         with pytest.raises(ValueError, match="Could not parse"):
-            judge._parse_response("not json")
+            parse_parity_response("not json")
 
     def test_parse_dict_reasoning(self):
-        judge = ParityJudge()
         response = json.dumps(
             {
                 "position_a_metrics": {},
@@ -339,7 +337,7 @@ class TestParityJudgeParsing:
                 "reasoning": {"point_1": "ok", "point_2": "fine"},
             }
         )
-        score, metrics, reasoning = judge._parse_response(response)
+        score, metrics, reasoning = parse_parity_response(response)
         assert "point_1: ok" in reasoning
 
 

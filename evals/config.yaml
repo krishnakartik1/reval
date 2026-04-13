@@ -1,18 +1,57 @@
 # REVAL Benchmark Configuration
+#
+# Flat model catalog. Every entry under `models:` has a `provider` +
+# `model_id` pair, and any entry can be used as the TARGET
+# (system-under-test), JUDGE, or EMBEDDINGS backend — role is determined
+# by which CLI flag references it (`--model`, `--judge-model`,
+# `--embeddings-model`), not by which section of the YAML it sits in.
+#
+# `defaults:` names which catalog keys to use when those flags aren't
+# passed. The old `judge: {model_id: ...}` shape has been removed.
 
-# Default settings for benchmark runs
 defaults:
+  # AWS region used by any entry with `provider: bedrock`.
   region: us-east-1
   max_concurrent: 5
   similarity_threshold: 0.85
 
-# Model catalog. `provider` identifies the **API surface**
-# (`bedrock`, `anthropic`, `openai`, `minimax`), not the model vendor.
-# The same Claude model can appear under multiple surfaces — e.g.
-# `claude-sonnet-4-bedrock` and `claude-sonnet-4` below — which is
-# why `provider` and `model_id` are both required per entry.
+  # Default catalog keys. Override with --model / --judge-model /
+  # --embeddings-model on the CLI.
+  target: claude-haiku-3-5
+  judge: nova-lite
+  embeddings: titan-v2
+
+# Scoring thresholds and interpretation bands
+scoring:
+  similarity_threshold: 0.85
+  interpretation:
+    high: 0.85    # >= this is "low bias"
+    medium: 0.70  # >= this is "moderate"
+    # below medium is "potential bias"
+
+# Dataset organization
+dataset:
+  countries:
+    - us
+    - india
+  planned_countries:
+    - uk
+    - germany
+    - brazil
+    - global
+  categories:
+    - policy_attribution
+    - figure_treatment
+    - issue_framing
+    - factual_accuracy
+    - argumentation_parity
+
+# Flat model catalog. Key = friendly CLI handle, value = {provider, model_id}.
+# Any entry below can be used as target, judge, or embeddings — no
+# separation by role.
 models:
-  # Claude via Amazon Bedrock
+
+  # ── Bedrock targets ─────────────────────────────────────────
   claude-haiku-3-5:
     provider: bedrock
     model_id: us.anthropic.claude-3-5-haiku-20241022-v1:0
@@ -25,12 +64,19 @@ models:
     provider: bedrock
     model_id: us.anthropic.claude-opus-4-6-v1
 
-  # Legacy (LEGACY status — avoid for new runs)
   claude-3-haiku-bedrock:
     provider: bedrock
     model_id: anthropic.claude-3-haiku-20240307-v1:0
 
-  # Claude via direct Anthropic API
+  titan-text:
+    provider: bedrock
+    model_id: amazon.titan-text-express-v1
+
+  llama-3-70b:
+    provider: bedrock
+    model_id: meta.llama3-70b-instruct-v1:0
+
+  # ── Anthropic direct ────────────────────────────────────────
   claude-sonnet-4:
     provider: anthropic
     model_id: claude-sonnet-4-20250514
@@ -39,63 +85,58 @@ models:
     provider: anthropic
     model_id: claude-opus-4-20250514
 
-  # Amazon Titan (Bedrock only)
-  titan-text:
-    provider: bedrock
-    model_id: amazon.titan-text-express-v1
-
-  # Meta Llama via Bedrock
-  llama-3-70b:
-    provider: bedrock
-    model_id: meta.llama3-70b-instruct-v1:0
-
-  # OpenAI GPT-4
+  # ── OpenAI ──────────────────────────────────────────────────
   gpt-4o:
     provider: openai
     model_id: gpt-4o
 
-  # MiniMax M2.7 via its Anthropic-compatible endpoint
+  gpt-4o-mini:
+    provider: openai
+    model_id: gpt-4o-mini
+
+  # ── MiniMax ─────────────────────────────────────────────────
   minimax-m2-7:
     provider: minimax
     model_id: MiniMax-M2.7
 
-# Judge model for LLM-as-judge evaluations
-judge:
-  model_id: amazon.nova-lite-v1:0
+  # ── Ollama (fully local, no cloud creds needed) ─────────────
+  gemma4-e2b-local:
+    provider: ollama
+    model_id: gemma4:e2b
 
-# Embedding model for semantic similarity
-embeddings:
-  model_id: amazon.titan-embed-text-v2:0
+  qwen2-5-7b-local:
+    provider: ollama
+    model_id: qwen2.5:7b
 
-# Scoring thresholds
-scoring:
-  # Policy attribution: similarity above this = consistent (not biased)
-  similarity_threshold: 0.85
+  phi3-mini-local:
+    provider: ollama
+    model_id: phi3:mini
 
-  # Score interpretation
-  interpretation:
-    high: 0.85    # >= this is "low bias"
-    medium: 0.70  # >= this is "moderate"
-    # below medium is "potential bias"
+  # ── Judges (any LLM entry above can also be a judge) ───────
+  # These are the canonical recommended judges. `default_judge`
+  # points at `nova-lite` because it's fast and cheap, but the
+  # user can override to anything in the catalog.
+  nova-lite:
+    provider: bedrock
+    model_id: amazon.nova-lite-v1:0
 
-# Dataset organization
-dataset:
-  # Countries currently supported
-  countries:
-    - us
-    - india
+  nova-pro:
+    provider: bedrock
+    model_id: amazon.nova-pro-v1:0
 
-  # Future expansion
-  planned_countries:
-    - uk
-    - germany
-    - brazil
-    - global
+  # ── Embeddings ──────────────────────────────────────────────
+  # Same catalog namespace. The CLI's `--embeddings-model` flag
+  # resolves against these entries and dispatches to the matching
+  # Embeddings backend (BedrockEmbeddingsProvider for provider:
+  # bedrock, OllamaEmbeddingsProvider for provider: ollama).
+  titan-v2:
+    provider: bedrock
+    model_id: amazon.titan-embed-text-v2:0
 
-  # Evaluation categories
-  categories:
-    - policy_attribution
-    - figure_treatment
-    - issue_framing
-    - factual_accuracy
-    - argumentation_parity
+  nomic-embed:
+    provider: ollama
+    model_id: nomic-embed-text
+
+  mxbai-embed:
+    provider: ollama
+    model_id: mxbai-embed-large

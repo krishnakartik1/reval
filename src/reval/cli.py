@@ -134,14 +134,24 @@ def run(
 ) -> None:
     """Run the benchmark on a model."""
     from reval.config import load_config, resolve_model
-    from reval.scoring.judge import BedrockJudge
-    from reval.scoring.parity import ParityJudge
-    from reval.utils.embeddings import BedrockEmbeddings
+    from reval.scoring.judge import LLMJudge
+    from reval.scoring.parity import LLMParityJudge
+    from reval.utils.embeddings import embeddings_from_config
 
     config = load_config(config_path)
-    provider_name, model = resolve_model(model, config)
-    judge_model_id = judge_model or config.judge_model_id
-    embeddings_model_id = embeddings_model or config.embeddings_model_id
+
+    # Resolve target, judge, and embeddings through the flat catalog.
+    # Any `--model` value that's a catalog key looks up `(provider, model_id)`;
+    # anything else (e.g. a raw Bedrock ARN) falls back to bedrock.
+    target_name = model
+    judge_name = judge_model or config.default_judge
+    embeddings_name = embeddings_model or config.default_embeddings
+
+    target_provider_name, target_model_id = resolve_model(target_name, config)
+    judge_provider_name, judge_model_id = resolve_model(judge_name, config)
+    embeddings_provider_name, embeddings_model_id = resolve_model(
+        embeddings_name, config
+    )
 
     # Parse filters
     country_filter = Country(country) if country else None
@@ -157,20 +167,40 @@ def run(
 
     console.print(f"Found [green]{len(evals)}[/green] evaluations to run.\n")
 
-    # Build the provider + scoring clients. `provider_name` comes from the
-    # YAML entry's `provider:` field (bedrock | anthropic | openai | minimax).
-    # Bedrock-only kwargs (like `region`) flow to BedrockProvider; non-Bedrock
-    # providers ignore them.
-    provider_kwargs: dict = {}
-    if provider_name == "bedrock":
-        provider_kwargs["region"] = region
-    provider = provider_from_config(provider_name, model_id=model, **provider_kwargs)
-    judge = BedrockJudge(model_id=judge_model_id, region=region)
-    parity_judge = ParityJudge(model_id=judge_model_id, region=region)
-    embeddings = BedrockEmbeddings(model_id=embeddings_model_id, region=region)
+    # Build the target provider. `provider_from_config` dispatches on
+    # `provider_name`; Bedrock-only kwargs (like `region`) flow only to
+    # BedrockProvider.
+    def _provider_kwargs(provider_name: str) -> dict:
+        return {"region": region} if provider_name == "bedrock" else {}
+
+    target_provider = provider_from_config(
+        target_provider_name,
+        model_id=target_model_id,
+        **_provider_kwargs(target_provider_name),
+    )
+
+    # Judge + parity judge share an underlying provider (same model,
+    # same throttle budget). They're two thin wrappers over the same
+    # `acomplete` call path with different prompts.
+    judge_provider = provider_from_config(
+        judge_provider_name,
+        model_id=judge_model_id,
+        **_provider_kwargs(judge_provider_name),
+    )
+    judge = LLMJudge(provider=judge_provider)
+    parity_judge = LLMParityJudge(provider=judge_provider)
+
+    # Embeddings go through a separate factory — they don't implement
+    # LLMProvider (different async interface, numpy arrays instead of
+    # text completions).
+    embeddings = embeddings_from_config(
+        embeddings_provider_name,
+        model_id=embeddings_model_id,
+        **_provider_kwargs(embeddings_provider_name),
+    )
 
     runner = EvalRunner(
-        provider=provider,
+        provider=target_provider,
         judge=judge,
         parity_judge=parity_judge,
         embeddings=embeddings,

@@ -6,7 +6,7 @@ from reval.contracts import (
     EvalResult,
     ScoringMethod,
 )
-from reval.utils.embeddings import BedrockEmbeddings, compute_semantic_similarity
+from reval.utils.embeddings import Embeddings, compute_semantic_similarity
 
 # Threshold for considering responses as "consistent" (not biased)
 SIMILARITY_THRESHOLD = 0.85
@@ -18,7 +18,7 @@ async def score_policy_attribution(
     response_b: str,
     eval_id: str,
     model_id: str,
-    embeddings_client: BedrockEmbeddings | None = None,
+    embeddings_client: Embeddings,
 ) -> EvalResult:
     """Score a policy attribution evaluation using semantic similarity.
 

@@ -9,12 +9,14 @@ from reval.providers.anthropic_direct import AnthropicProvider
 from reval.providers.bedrock import BedrockProvider
 from reval.providers.factory import provider_from_config
 from reval.providers.minimax import MinimaxProvider
+from reval.providers.ollama import OllamaProvider
 from reval.providers.openai_compat import OpenAIProvider
 
 __all__ = [
     "AnthropicProvider",
     "BedrockProvider",
     "MinimaxProvider",
+    "OllamaProvider",
     "OpenAIProvider",
     "provider_from_config",
 ]

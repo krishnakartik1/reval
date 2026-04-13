@@ -22,11 +22,11 @@ from reval.contracts import (
     ScoringMethod,
     get_git_sha,
 )
-from reval.scoring.judge import BedrockJudge, score_with_judge
-from reval.scoring.parity import ParityJudge, score_argumentation_parity
+from reval.scoring.judge import LLMJudge, score_with_judge
+from reval.scoring.parity import LLMParityJudge, score_argumentation_parity
 from reval.scoring.rubric import load_rubrics_from_directory
 from reval.scoring.similarity import score_policy_attribution
-from reval.utils.embeddings import BedrockEmbeddings
+from reval.utils.embeddings import Embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +35,19 @@ class EvalRunner:
     """Async runner for reval benchmark evaluations.
 
     Callers construct the runner with a pre-built `LLMProvider` (the system
-    under test), a `BedrockJudge`, a `ParityJudge`, and a `BedrockEmbeddings`
-    instance. The CLI builds all four via `provider_from_config` + direct
-    construction; tests can inject their own mocks.
+    under test), an `LLMJudge`, an `LLMParityJudge`, and an `Embeddings`
+    backend. Judge and embeddings are provider-agnostic: they can back
+    onto Bedrock, Anthropic, OpenAI, MiniMax, or Ollama depending on how
+    the CLI resolves them from the flat catalog in `evals/config.yaml`.
+    Tests can inject their own mocks via the same dependency-injection path.
     """
 
     def __init__(
         self,
         provider: LLMProvider,
-        judge: BedrockJudge,
-        parity_judge: ParityJudge,
-        embeddings: BedrockEmbeddings,
+        judge: LLMJudge,
+        parity_judge: LLMParityJudge,
+        embeddings: Embeddings,
         rubrics_dir: str | Path | None = None,
         max_concurrent: int = 5,
     ):
