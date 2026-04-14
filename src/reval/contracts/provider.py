@@ -1,8 +1,10 @@
 """Abstract LLM provider interface used by the reval runner and collector.
 
 Concrete providers live under `reval.providers` and do import their
-concrete HTTP clients (`aioboto3`, `httpx`, `anthropic`, `openai`).
-This module itself must not — `reval.contracts` is a zero-dep namespace.
+concrete SDKs. This module itself must not — `reval.contracts` is a
+zero-dep namespace. The forbidden-imports set is enforced by
+`tests/test_contracts_imports.py` and is:
+`{aioboto3, boto3, numpy, jsonlines, httpx, anthropic, openai}`.
 """
 
 from __future__ import annotations

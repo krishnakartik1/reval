@@ -31,9 +31,25 @@ reval validate --dataset evals/datasets/
 
 ## Code Changes
 
-- Run tests before submitting: `pytest`
 - Keep changes focused — one concern per PR
-- New functionality should include tests
+- **Every new module or public class must ship tests in the same PR.** There is no "add tests later" — the review bar is that code and its tests land together.
+- **Coverage floor is 85%.** CI runs `pytest tests/ --cov=reval --cov-fail-under=85`; PRs that drop coverage below the floor are blocked.
+- Before pushing, run:
+  ```bash
+  ruff check .
+  black --check .
+  pytest tests/                  # unit tests only — no network, fast
+  ```
+  All three must pass.
+
+### Which test suite to run
+
+Reval has **two** test trees, configured via `testpaths = ["tests", "evaluations"]` in `pyproject.toml`:
+
+- `tests/` — **unit tests, mocked providers, no network.** This is the default suite for iteration and pre-push gating. Always invoke as `pytest tests/`.
+- `evaluations/` — **live-API integration tests** marked `@pytest.mark.eval`. These hit real Bedrock/Anthropic/OpenAI/MiniMax endpoints and cost money to run. They auto-skip when credentials are missing, but you still pay collection + probe overhead on every invocation. **Run these only when you deliberately want a live-eval pass**, with `pytest -m eval evaluations/ -v`.
+
+**Do not run bare `pytest`** during normal development — because `testpaths` includes both trees, bare `pytest` walks `evaluations/` too and triggers the live-eval collection path. Always qualify the path (`pytest tests/`) or the marker (`pytest -m "not eval"`).
 
 ## Questions
 

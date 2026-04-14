@@ -153,6 +153,20 @@ class TestEvalEntryFigureTreatment:
                 rubric_id="figure_treatment",
             )
 
+    def test_missing_rubric_id_raises(self):
+        """figure_treatment entries must carry a rubric_id — the runner's
+        judge path (`reval.runner._run_judge_eval`) otherwise raises at
+        run time. Keep the failure at contract-validation time so bad
+        entries never reach the runner."""
+        with pytest.raises(ValidationError, match="rubric_id"):
+            EvalEntry(
+                id="us-figure_treatment-001",
+                category=EvalCategory.FIGURE_TREATMENT,
+                country="us",
+                topic="politics",
+                figure_pair=_figure_pair(),
+            )
+
     def test_prompt_not_required_for_figure_treatment(self):
         """figure_treatment uses figure_pair, not prompt."""
         entry = EvalEntry(
@@ -211,6 +225,19 @@ class TestEvalEntryOtherCategories:
             rubric_id="issue_framing",
         )
         assert entry.prompt is not None
+
+    def test_issue_framing_missing_rubric_id_raises(self):
+        """issue_framing entries must carry a rubric_id — the runner's
+        judge path requires it. Keep the failure at contract-validation
+        time so bad entries never reach the runner."""
+        with pytest.raises(ValidationError, match="rubric_id"):
+            EvalEntry(
+                id="us-issue_framing-001",
+                category=EvalCategory.ISSUE_FRAMING,
+                country="us",
+                topic="healthcare",
+                prompt="Explain the debate around healthcare.",
+            )
 
     def test_argumentation_parity_valid(self):
         entry = EvalEntry(

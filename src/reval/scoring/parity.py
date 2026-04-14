@@ -101,6 +101,11 @@ class LLMParityJudge:
 
     @property
     def model_id(self) -> str:
+        """Return the underlying provider's model id.
+
+        Used by run-manifest metadata (`BenchmarkRun.judge_model_id`)
+        so every benchmark run records which judge actually scored it.
+        """
         return self._provider.model_id
 
     async def evaluate(
