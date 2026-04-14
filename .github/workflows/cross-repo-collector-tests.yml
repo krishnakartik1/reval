@@ -1,0 +1,74 @@
+name: cross-repo-collector-tests
+
+# Guards against silent breakage of reval-collector when reval's contract /
+# provider / runner surface changes. On any PR that touches one of those
+# load-bearing paths, check out reval-collector alongside this PR's reval
+# SHA, install both editable, and run collector's unit test suite. If
+# collector breaks, this check fails and blocks merge.
+#
+# Contracts flow one-way: reval -> collector -> future webui. Only reval
+# needs the gate today. Mirror on collector later if webui starts consuming
+# collector's own API surface.
+
+on:
+  pull_request:
+    paths:
+      - "src/reval/contracts/**"
+      - "src/reval/providers/**"
+      - "src/reval/runner.py"
+  push:
+    branches:
+      - master
+    paths:
+      - "src/reval/contracts/**"
+      - "src/reval/providers/**"
+      - "src/reval/runner.py"
+
+jobs:
+  collector-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out reval (PR SHA)
+        uses: actions/checkout@v4
+        with:
+          path: reval
+
+      - name: Check out reval-collector (default branch)
+        uses: actions/checkout@v4
+        with:
+          repository: krishnakartik1/reval-collector
+          path: reval-collector
+          # If reval-collector becomes private, add a fine-grained PAT with
+          # read access as the COLLECTOR_READ_TOKEN secret and uncomment:
+          # token: ${{ secrets.COLLECTOR_READ_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install reval editable
+        working-directory: reval
+        run: uv pip install --system -e .
+
+      - name: Install reval-collector editable
+        working-directory: reval-collector
+        run: uv pip install --system -e .
+
+      - name: Run collector unit tests
+        working-directory: reval-collector
+        run: pytest -q --tb=short
+
+      - name: Upload collector test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-pytest-output
+          path: reval-collector/.pytest_cache/
+          retention-days: 7
