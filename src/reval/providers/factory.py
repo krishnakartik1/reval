@@ -1,6 +1,6 @@
 """Provider factory — resolves a provider-name string to a concrete LLMProvider.
 
-Bedrock-only in Phase 1. Phase 3 registers MiniMax/Anthropic/OpenAI.
+Registered providers: `bedrock`, `anthropic`, `minimax`, `openai`, `ollama`.
 """
 
 from __future__ import annotations
@@ -32,7 +32,8 @@ def provider_from_config(
 
     Args:
         provider_name: One of the registered provider identifiers
-            (`"bedrock"` in Phase 1). Matches `LLMProvider.provider_name`.
+            (`"bedrock"`, `"anthropic"`, `"minimax"`, `"openai"`,
+            `"ollama"`). Matches `LLMProvider.provider_name`.
         model_id: Model identifier passed through to the concrete provider.
         **kwargs: Additional provider-specific kwargs (e.g. `region` for
             Bedrock). Forwarded verbatim.

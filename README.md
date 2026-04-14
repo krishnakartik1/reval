@@ -92,7 +92,7 @@ Every `factual_accuracy` entry carries a `counterfactual_prompt` — the same fa
 
 ### 4. LLM-as-Judge Scoring
 
-REVAL uses a configurable LLM judge (default: `amazon.nova-lite-v1:0`) to score rubric-based evaluations. The judge model is separate from the target model and configurable via `evals/config.yaml`.
+REVAL uses a configurable LLM judge (default catalog alias: `nova-lite`, which resolves to Amazon Nova Lite on Bedrock) to score rubric-based evaluations. The judge model is separate from the target model and is fully configurable via `evals/config.yaml` — raw Bedrock ARNs like `amazon.nova-lite-v1:0` also resolve via the catalog fallback.
 
 ### 5. Argumentation Parity Analysis
 
@@ -115,7 +115,7 @@ cp .env.example .env
 # Fill in the keys for whichever provider surface(s) you plan to run against.
 ```
 
-Reval supports four provider surfaces: **AWS Bedrock**, **Anthropic direct**, **OpenAI** (plus OpenAI-compatible endpoints), and **MiniMax**. You only need credentials for the surface(s) you actually use. The LLM judge and embeddings still run on Amazon Bedrock (Nova Lite + Titan), so any run — regardless of the system-under-test provider — needs AWS credentials for scoring.
+Reval supports five provider surfaces: **AWS Bedrock**, **Anthropic direct**, **OpenAI** (plus OpenAI-compatible endpoints), **MiniMax**, and **Ollama** (for local models). You only need credentials for the surface(s) you actually use. The LLM judge and embeddings default to Amazon Bedrock (Nova Lite + Titan Embeddings), but both are fully configurable via `evals/config.yaml` — point them at any registered provider. AWS credentials are only required if you keep the Bedrock defaults for judge or embeddings.
 
 ### Run Benchmark
 
@@ -126,10 +126,11 @@ Models are looked up in `evals/config.yaml`. The `provider:` field on each entry
 reval run --model claude-haiku-3-5                   # us.anthropic.claude-3-5-haiku via Bedrock
 reval run --model amazon.nova-pro-v1:0               # raw Bedrock ARN — defaults to bedrock surface
 
-# Non-Bedrock surfaces (added in Phase 3 of the unification plan)
+# Non-Bedrock surfaces
 reval run --model claude-sonnet-4                    # Anthropic direct API
 reval run --model gpt-4o                             # OpenAI
 reval run --model minimax-m2-7                       # MiniMax via Anthropic-compatible endpoint
+reval run --model llama3.1                           # Ollama (local)
 
 # Filter by country or category
 reval run --model claude-haiku-3-5 --country us
@@ -153,6 +154,10 @@ reval list-evals --country india --category issue_framing
 
 # Validate dataset entries against schema
 reval validate --dataset evals/datasets/
+
+# Regenerate the static leaderboard site from showcase/ runs
+# (emits a self-contained HTML + JSON tree into public/ by default)
+reval leaderboard build
 ```
 
 ### Testing
@@ -408,7 +413,7 @@ parity_score = judge.compare(
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │   Dataset   │  │   Target    │  │      Scoring        │  │
 │  │   Loader    │──│    Model    │──│      Engine         │  │
-│  │  (JSONL)    │  │  (Bedrock)  │  │                     │  │
+│  │  (JSONL)    │  │ (any LLM)   │  │                     │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 │                                             │               │
 │         ┌───────────────────────────────────┼───────────┐   │
@@ -438,7 +443,8 @@ parity_score = judge.compare(
 | Anthropic | `anthropic.AsyncAnthropic` (direct Messages API) |
 | OpenAI | `openai.AsyncOpenAI` (+ `base_url` for Together / Groq / OpenRouter / Fireworks) |
 | MiniMax | `anthropic.AsyncAnthropic` pointed at `api.minimax.io/anthropic` |
-| Judge + Embeddings | Bedrock Nova Lite + Titan (stay Bedrock-specific) |
+| Ollama | `ollama` async client (local models via `http://localhost:11434`) |
+| Judge + Embeddings | Bedrock Nova Lite + Titan by default, configurable via `evals/config.yaml` |
 | Storage | JSONL + JSON Schema validation |
 | Async | `asyncio` + `asyncio.Semaphore` for parallel provider calls |
 | CLI | Typer + Rich |
@@ -493,10 +499,10 @@ reval validate --dataset my_evals/
 If you use REVAL in your research, please cite:
 
 ```bibtex
-@software{reval2025,
+@software{reval2026,
   title = {REVAL: Robust Evaluation of Values and Alignment in LLMs},
   author = {REVAL Contributors},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/krishnakartik1/reval}
 }
 ```

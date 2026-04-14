@@ -34,7 +34,7 @@ async def score_policy_attribution(
         response_b: Model's response to prompt_b
         eval_id: ID of the evaluation
         model_id: ID of the model being evaluated
-        embeddings_client: Optional embeddings client to reuse
+        embeddings_client: Embeddings client used to compute vector similarity
 
     Returns:
         EvalResult with similarity-based score

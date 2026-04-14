@@ -1,9 +1,11 @@
 """Pydantic data contracts for reval — eval entries, results, benchmark runs.
 
-Moved here from `reval.models.eval` as part of the Phase 1 unification so
-`reval.contracts` becomes the single shared data-model namespace. This
-module has zero dependencies on `aioboto3`, `numpy`, `jsonlines`, or any
-HTTP client library.
+`reval.contracts` is the single shared data-model namespace and is kept
+strictly free of heavy or network-bound dependencies so downstream repos
+(`reval-collector`, eventually `reval-webui`) can import it without
+pulling in AWS SDKs or HTTP clients. The forbidden-imports set is
+enforced by `tests/test_contracts_imports.py` and is:
+`{aioboto3, boto3, numpy, jsonlines, httpx, anthropic, openai}`.
 """
 
 from __future__ import annotations
@@ -193,8 +195,11 @@ class EvalEntry(BaseModel):
         cat = self.category
         if cat == EvalCategory.POLICY_ATTRIBUTION and self.counterfactual_pair is None:
             raise ValueError("policy_attribution category requires counterfactual_pair")
-        if cat == EvalCategory.FIGURE_TREATMENT and self.figure_pair is None:
-            raise ValueError("figure_treatment category requires figure_pair")
+        if cat == EvalCategory.FIGURE_TREATMENT:
+            if self.figure_pair is None:
+                raise ValueError("figure_treatment category requires figure_pair")
+            if self.rubric_id is None:
+                raise ValueError("figure_treatment category requires rubric_id")
         if cat == EvalCategory.FACTUAL_ACCURACY:
             if self.ground_truth is None:
                 raise ValueError("factual_accuracy category requires ground_truth")
@@ -204,8 +209,11 @@ class EvalEntry(BaseModel):
                 )
             if self.prompt is None:
                 raise ValueError("factual_accuracy category requires a prompt")
-        if cat == EvalCategory.ISSUE_FRAMING and self.prompt is None:
-            raise ValueError("issue_framing category requires a prompt")
+        if cat == EvalCategory.ISSUE_FRAMING:
+            if self.prompt is None:
+                raise ValueError("issue_framing category requires a prompt")
+            if self.rubric_id is None:
+                raise ValueError("issue_framing category requires rubric_id")
         return self
 
 
