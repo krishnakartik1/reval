@@ -251,7 +251,8 @@ def test_article_has_no_md_hrefs(page: Page, site_url: str) -> None:
     page.goto(f"{site_url}/docs/getting-started/install.html")
     _wait_for_docs_hydration(page)
 
-    offenders = page.evaluate("""() => {
+    offenders = page.evaluate(
+        """() => {
             const links = document.querySelectorAll('.docs-prose a[href]');
             const bad = [];
             for (const a of links) {
@@ -271,7 +272,8 @@ def test_article_has_no_md_hrefs(page: Page, site_url: str) -> None:
                 }
             }
             return bad;
-        }""")
+        }"""
+    )
     assert offenders == [], f"Bare .md hrefs leaked into the article: {offenders}"
 
 

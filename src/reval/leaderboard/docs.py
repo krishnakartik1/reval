@@ -239,6 +239,11 @@ _PRE_WRAP_RE = re.compile(
 # but the body still carries hand-written `.md` links from the source
 # markdown — we rewrite both ends: the href suffix and any `#anchor`
 # tail is preserved verbatim.
+#
+# Query strings after `.md` (e.g. `foo.md?v=1`) are NOT rewritten —
+# docs authors aren't expected to query-parameterize internal links
+# on a static site. If that ever lands, widen the tail group to
+# `(?:[?#].*)?` and update the callers.
 _INTERNAL_MD_LINK_RE = re.compile(r"^(?!https?://|mailto:|/|#)(.+?)\.md(#.*)?$")
 
 
