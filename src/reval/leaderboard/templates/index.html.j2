@@ -410,6 +410,9 @@
       renderScatter() {
         var canvas = document.getElementById('scatterChart');
         if (!canvas || !window.Chart) return;
+        // Idempotent — destroy any prior Chart bound to this canvas before re-drawing.
+        var existing = Chart.getChart(canvas);
+        if (existing) existing.destroy();
         var rows = this.allRows.filter(r => r.overall_score != null);
         if (rows.length === 0) return;
 
