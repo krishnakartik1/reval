@@ -423,20 +423,23 @@ def build(
     if docs_dir is not None and docs_dir.exists():
         # Lazy import — keeps `markdown-it-py` / `mdit-py-plugins` /
         # `pygments` off the hot path for `reval leaderboard build`
-        # users who don't install the `[docs]` optional extra.
+        # users who don't install the `[docs]` optional extra. The
+        # heavy deps themselves are imported lazily *inside* docs.py
+        # (see `_render_markdown` / `_highlight_code`), so ImportError
+        # surfaces at call time — wrap the calls, not the import.
+        from reval.leaderboard.docs import load_docs, render_docs
+
         try:
-            from reval.leaderboard.docs import load_docs, render_docs
+            docs_sections = load_docs(docs_dir)
+            render_docs(env, docs_sections, output_dir)
         except ImportError as exc:
             logger.warning(
-                "Docs tab requested (--docs %s) but the `[docs]` extra is "
-                "not installed (%s). Skipping docs build. Install with: "
+                "Docs tab requested (--docs %s) but a required dependency "
+                "is missing (%s). Skipping docs build. Install with: "
                 "`pip install reval[docs]`.",
                 docs_dir,
                 exc,
             )
-        else:
-            docs_sections = load_docs(docs_dir)
-            render_docs(env, docs_sections, output_dir)
 
     return build_report
 
