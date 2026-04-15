@@ -1,6 +1,8 @@
 __pycache__
 results/
 public/
+artifacts/
+tests/ui/__snapshots__/
 .claude
 .env
 .coverage
