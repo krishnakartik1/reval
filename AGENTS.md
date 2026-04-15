@@ -86,21 +86,73 @@ The JSON schema at `evals/schema.json` mirrors these rules in `allOf` conditiona
 
 ## Testing — Hard Requirements
 
-Two tiers, kept strictly separate:
+Three tiers, kept strictly separate:
 
 1. **`tests/`** — unit tests with every external call mocked. Run in CI on every PR via `.github/workflows/test.yml`.
-   - `pytest tests/ --cov=reval --cov-fail-under=85`
-2. **`evaluations/`** — integration tests (`@pytest.mark.eval`) that hit real Amazon Bedrock, Anthropic, OpenAI, and MiniMax endpoints. Each test skips individually via `@pytest.mark.skipif` when the matching API key isn't set. Run in CI via `.github/workflows/evals.yml` when the `run-evals` label is applied to a PR.
+   - `pytest tests/ --cov=reval --cov-fail-under=85` (UI tests are excluded by the three-layer guard documented in the UI Validation Harness section below)
+2. **`tests/ui/`** — browser-level Playwright tests that render the static leaderboard and the per-run HTML report in headless Chromium and assert against the post-JS DOM. See the **UI Validation Harness** section below.
+3. **`evaluations/`** — integration tests (`@pytest.mark.eval`) that hit real Amazon Bedrock, Anthropic, OpenAI, and MiniMax endpoints. Each test skips individually via `@pytest.mark.skipif` when the matching API key isn't set. Run in CI via `.github/workflows/evals.yml` when the `run-evals` label is applied to a PR.
    - `pytest -m eval evaluations/ -v`
 
 Rules:
 - **Every new class or module added must have corresponding tests in the same PR.**
 - Mock ALL external API calls in `tests/` — no real network calls. Use `AsyncMock` on `provider.acomplete` returning a `CompletionResult`; don't monkey-patch SDK modules.
 - Live-API tests belong in `evaluations/`, never in `tests/`.
-- **Minimum 85% coverage required** on the `reval` package.
+- **Minimum 85% coverage required** on the `reval` package. UI tests do not contribute to the denominator — they are run in a separate CI job with no `--cov` flag.
 - When touching the runner's scoring paths, add an integration eval under `evaluations/` that verifies the new field is populated end-to-end.
 - **Any change to LLM-driven behavior requires a live eval in the same PR, not just a unit test.** This includes prompt templates, new fields the LLM is asked to fill, parse/validation logic that consumes LLM output, sampling parameters passed through `LLMProvider.acomplete`, and new fields on `CompletionResult`. Unit tests with mocked responses prove the parser handles a known payload; the eval proves a real model actually produces that payload under your new prompt. Ship both in the same PR.
 - `reval.contracts` must stay zero-dep (enforced by `tests/test_contracts_imports.py`). Do not import aioboto3 / numpy / httpx / anthropic / openai from anything reachable through `reval.contracts`.
+
+## UI Validation Harness — `tests/ui/`
+
+Playwright + pytest-playwright suite that renders the static leaderboard and the per-run HTML report in headless Chromium and asserts against the **post-JS DOM**. Catches the class of client-side bugs that string-presence tests on Jinja output cannot see (e.g. an Alpine.js helper that mangles a field client-side, a Chart.js canvas-reuse error, a missing lucide icon).
+
+**When you must run it.** Any PR that edits one of:
+
+- `src/reval/leaderboard/templates/*.html.j2` — the leaderboard Jinja templates.
+- `src/reval/leaderboard/assets/*.js` — `radar.js` or any other client-side script.
+- `src/reval/leaderboard/assets/*.css` and the Alpine.js component in `index.html.j2`.
+- `src/reval/leaderboard/build.py` — the build function that wires rows + categories into the templates.
+- `src/reval/report.py` — the per-run `generate_html_report` string builder and its `_CATEGORY_ICONS` map.
+- `src/reval/contracts/models.py` — `BenchmarkRun`, `EvalCategory`, `EvalResult`, `RunManifestMixin`, or any field the fixture depends on.
+
+Other edits do not need to run it.
+
+**One-time setup** (not in the default `[dev]` extra, to keep base installs lean):
+
+```bash
+pip install -e ".[dev,ui]"
+python -m playwright install chromium           # or `--with-deps chromium` on a fresh Ubuntu host
+```
+
+**How to run.**
+
+```bash
+pytest tests/ui/ -m ui --tb=short                # local run, ~12s, writes PNG screenshots to artifacts/ui/
+```
+
+The default `pytest tests/` run excludes UI tests via a three-layer guard:
+
+1. `tests/conftest.py` sets `collect_ignore = ["ui"]` **only when `import playwright.sync_api` raises `ImportError`** — i.e. when the `[ui]` extra is not installed. This prevents collection from ever descending into `tests/ui/` in a dev-only environment and crashing on the missing Playwright dependency.
+2. `addopts = "-m 'not ui'"` in `pyproject.toml` — deselects UI-marked tests in any environment where layer 1 did not fire (e.g. a developer who installed `[dev,ui]` and runs `pytest tests/` without a marker expression). Pytest's "last `-m` wins" semantics mean the CI `ui-validate` job's explicit `pytest ... -m ui` still collects and runs the UI suite.
+3. `--ignore=tests/ui -m "not ui"` on the CI unit-test step in `.github/workflows/test.yml` — belt-and-suspenders redundancy with layer 1 for the CI `test` job, which only installs `[dev]` and never needs to see `tests/ui/` at all.
+
+Both the default and UI paths stay green independently.
+
+**Rules for adding new UI tests.**
+
+- **Sync `def` only.** pytest-playwright's `page` fixture is synchronous; `pytest-asyncio`'s `auto` mode would wrap an `async def` test into a coroutine the sync fixture cannot feed. `tests/ui/conftest.py::pytest_collection_modifyitems` rejects coroutine tests under `tests/ui/` at collection time with a clear `UsageError`, so a mistake fails loudly.
+- **Use `expect(locator).to_have_text(...)`, not raw `.text_content()`.** Alpine.js hydration is asynchronous; raw reads race the first paint. The `expect` API auto-retries until the assertion is satisfied or times out.
+- **Add `data-testid` attributes to the templates rather than rely on CSS structure.** The harness already depends on `data-testid="judge-pill"`, `data-testid="model-row"`, and `data-testid="sort-overall"` in `index.html.j2`. Any new selector target needs its own testid.
+- **Build fixtures via `BenchmarkRun(...).model_dump(mode="json")`, never hand-written JSON.** Schema drift must fail at fixture-construction time, not in a frozen JSON file. The existing `_make_run` helper in `tests/ui/conftest.py` is the template.
+- **Derive category lists from `EvalCategory`**, e.g. `CATEGORIES = [c.value for c in EvalCategory]`. A hardcoded list of category strings silently drifts when a new category is added to the enum.
+- **You don't have to declare `page` explicitly in a test that only needs `js_errors`.** The `js_errors` fixture depends on `page` as a positional parameter, so pytest auto-injects and orders the overridden `page` (which wires up `console` + `pageerror` capture) before `js_errors` runs. Declare both only if the test also navigates the page directly.
+- **The synthetic `multi_judge_showcase` fixture has exactly three runs picked so `shortJudge`, filter, sort, and radar tests all have meaningful signal:** one Bedrock run (`model_provider="bedrock"`, judge `amazon.nova-lite-v1:0`), one OpenAI-surface run with an **OpenRouter-style `judge_model_id`** (`model_provider="openai"`, model `gpt-4o-2024-11-20`, judge `openrouter/anthropic/claude-3-opus`), and one plain Anthropic run (`model_provider="anthropic"`, judge `claude-3-5-sonnet-20241022`). Extend the fixture — don't build a one-run shadow fixture for a new test — or the sort/filter regression coverage silently weakens.
+- **Screenshots land in `artifacts/ui/` at the repo root (gitignored).** To view them over SSH from a mini server: `cd artifacts/ui && python -m http.server 8888`, then open from your laptop browser.
+
+**CI.** `.github/workflows/test.yml` has a dedicated parallel `ui-validate` job that installs the `[dev,ui]` extras, caches `~/.cache/ms-playwright` keyed on `hashFiles('pyproject.toml')`, runs `pytest tests/ui/ -m ui`, and uploads `artifacts/ui/` as a workflow artifact named `ui-artifacts` (14-day retention). The job is currently `continue-on-error: true` during the shake-in period and carries a hard off-switch via the `UI_VALIDATE_ENABLED` repository variable (set to `false` to skip). Flip `continue-on-error` to `false` once it has been stable for ~2 weeks; leave the `if:` guard as a permanent kill-switch.
+
+**What the harness has already caught** (in the PR that introduced it): the Bedrock judge-pill `shortJudge` regex bug (splitting on `[/:.]` mangled every `amazon.*:0` Bedrock ID into the literal string `"0"`), and a pre-existing `renderScatter()` canvas-reuse error on the leaderboard index page (`Chart with ID '0' must be destroyed before the canvas with ID 'scatterChart' can be reused`).
 
 ## Linting & Formatting — Hard Gates
 
@@ -119,7 +171,13 @@ pytest tests/test_contracts_imports.py -v   # the guard in CI form
 pytest tests/test_provider_*.py -v          # all provider unit tests
 ```
 
-Reval's CI (`.github/workflows/test.yml`) runs pre-commit + pytest-with-coverage on every PR. The `evals.yml` workflow is label-triggered (`run-evals`) and runs `pytest -m eval evaluations/ -v` against real Bedrock + the configured provider keys.
+If you touched any file in the **UI Validation Harness** trigger list (leaderboard templates/assets, `report.py`, or `contracts/models.py` fields the fixture depends on), also run:
+
+```bash
+pytest tests/ui/ -m ui --tb=short           # Playwright harness; requires the [dev,ui] extras
+```
+
+Reval's CI (`.github/workflows/test.yml`) runs pre-commit + pytest-with-coverage on every PR. The same workflow has a parallel `ui-validate` job that runs the Playwright harness. The `evals.yml` workflow is label-triggered (`run-evals`) and runs `pytest -m eval evaluations/ -v` against real Bedrock + the configured provider keys.
 
 ## Project Structure
 
@@ -128,7 +186,7 @@ reval/
 ├── pyproject.toml                      # line-length 88, ruff.lint table, mypy plugin
 ├── .pre-commit-config.yaml             # ruff + ruff-format + black + mypy + file hooks
 ├── .github/workflows/
-│   ├── test.yml                        # fast gate: pre-commit + pytest --cov-fail-under=85
+│   ├── test.yml                        # fast gate: pre-commit + pytest --cov-fail-under=85 + ui-validate
 │   └── evals.yml                       # slow gate: label-triggered, needs AWS secrets
 ├── .env.example                        # AWS + per-provider key placeholders
 ├── README.md
@@ -171,13 +229,20 @@ reval/
 │       ├── figure_treatment.yaml
 │       └── issue_framing.yaml
 ├── tests/                              # unit tests (mocked HTTP/AWS, 85% coverage floor)
+│   ├── conftest.py                     # collect_ignore=["ui"] when Playwright absent
 │   ├── test_contracts_imports.py       # subprocess-based zero-dep guard
 │   ├── test_manifest_helpers.py        # get_git_sha() branches
 │   ├── test_providers.py               # BedrockProvider mocked
 │   ├── test_provider_anthropic.py      # AnthropicProvider mocked
 │   ├── test_provider_openai.py         # OpenAIProvider mocked
 │   ├── test_provider_minimax.py        # MinimaxProvider mocked
-│   └── fixtures/                       # make_benchmark_run() factory for mixin sentinels
+│   ├── fixtures/                       # make_benchmark_run() factory for mixin sentinels
+│   └── ui/                             # Playwright harness (pytest -m ui; see § UI Validation Harness)
+│       ├── __init__.py                 # empty — marks tests/ui as a package
+│       ├── conftest.py                 # multi_judge_showcase fixture, console/pageerror capture
+│       ├── test_leaderboard_index.py   # 5 tests incl. shortJudge regression + sort/filter + radar
+│       ├── test_leaderboard_model.py   # per-model page smoke test
+│       └── test_per_run_report.py      # generate_html_report file:// load + category drift canary
 ├── evaluations/                        # @pytest.mark.eval (real API calls, label-triggered in CI)
 │   ├── conftest.py                     # auto-skip when no AWS creds; eval_runner fixture
 │   ├── eval_factual_accuracy.py
