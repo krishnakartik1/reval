@@ -49,7 +49,18 @@ dev = [
     "pytest-asyncio>=0.21",
     "pytest-cov>=4.0",
     "ruff>=0.1",
-    "black>=24.0",
+    # Black is pinned to the EXACT version used by
+    # `.pre-commit-config.yaml`. Black changes its call-expression
+    # formatting across minor releases (e.g. 24.x vs 26.x diverge on
+    # `f("""\n...""")` vs `f(\n"""...""")`), which silently breaks
+    # the pre-commit hook on CI when a dev runs a newer Black
+    # locally and the reformat never shows up in their diff. Bump
+    # both this pin and `.pre-commit-config.yaml` in the SAME commit.
+    # ruff and mypy are intentionally left loose — pinning mypy
+    # would surface local-only errors against fully-installed deps
+    # (e.g. real openai stubs) that pre-commit's isolated env
+    # silences via `--ignore-missing-imports`.
+    "black==26.3.1",
     "mypy>=1.0",
     "types-PyYAML>=6.0",
     "pre-commit>=3.5",

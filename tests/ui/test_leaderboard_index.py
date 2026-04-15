@@ -83,12 +83,10 @@ def test_sort_by_overall_score(page: Page, site_url: str) -> None:
     assert model_id_sequence() == descending
 
     page.get_by_test_id("sort-overall").click()
-    page.wait_for_function(
-        """() => {
+    page.wait_for_function("""() => {
             const rows = document.querySelectorAll('[data-testid="model-row"]');
             return rows[0]?.getAttribute('data-model-id') === 'gpt-4o-2024-11-20';
-        }"""
-    )
+        }""")
     assert model_id_sequence() == list(reversed(descending))
 
 
