@@ -28,10 +28,13 @@ Architecture:
                                                                   └── concepts/
                                                                       └── rubrics.html
 
-Step 1 state (this commit): the renderer ships a stub that walks the
-directory tree, reads front-matter via a tiny regex, and emits a
-minimal HTML body. Real markdown rendering (markdown-it-py + Pygments
-+ TOC extraction + copy-button wrapping) lands in step 3.
+Rendering pipeline: front-matter via a tiny regex, body via
+`markdown-it-py` + `mdit-py-plugins` anchors (h2/h3, `doc-` prefixed),
+Pygments syntax highlighting with `nowrap=True` (so the highlighted
+`<pre class="hl">` slots directly into markdown-it's raw-HTML
+passthrough instead of being re-wrapped), TOC extraction by walking
+the token stream, and an Alpine-powered copy-button scaffold wrapped
+around every `<pre>` during post-processing.
 """
 
 from __future__ import annotations

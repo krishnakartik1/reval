@@ -13,10 +13,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from reval.leaderboard.build import _templates_dir
-from reval.leaderboard.docs import (
+pytest.importorskip(
+    "mdit_py_plugins",
+    reason="reval[docs] extra not installed — skipping Docs tab renderer tests",
+)
+pytest.importorskip("markdown_it", reason="reval[docs] extra not installed")
+pytest.importorskip("pygments", reason="reval[docs] extra not installed")
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
+
+from reval.leaderboard.build import _templates_dir  # noqa: E402
+from reval.leaderboard.docs import (  # noqa: E402
     DocPage,
     DocSection,
     TocEntry,

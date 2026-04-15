@@ -1,11 +1,18 @@
 """Tests for CLI commands."""
 
+import importlib.util
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from reval.cli import app
+
+_HAS_DOCS_EXTRA = all(
+    importlib.util.find_spec(mod) is not None
+    for mod in ("markdown_it", "mdit_py_plugins", "pygments")
+)
 
 runner = CliRunner()
 
@@ -168,6 +175,10 @@ class TestLeaderboardBuildDocsFlag:
     below will fail with `Got unexpected extra argument`.
     """
 
+    @pytest.mark.skipif(
+        not _HAS_DOCS_EXTRA,
+        reason="reval[docs] extra not installed",
+    )
     def test_build_docs_flag_points_at_fixture(self, tmp_path: Path) -> None:
         showcase = tmp_path / "showcase"
         output = tmp_path / "public"

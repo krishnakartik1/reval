@@ -27,6 +27,7 @@ leaderboard tab against the same `showcase/` data source.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from dataclasses import dataclass, field
 from importlib import resources
@@ -34,6 +35,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 #: Maximum number of recent runs shown per model in the leaderboard.
 #: Currently unused (every row is a distinct run), but reserved for a
@@ -421,10 +424,19 @@ def build(
         # Lazy import — keeps `markdown-it-py` / `mdit-py-plugins` /
         # `pygments` off the hot path for `reval leaderboard build`
         # users who don't install the `[docs]` optional extra.
-        from reval.leaderboard.docs import load_docs, render_docs
-
-        docs_sections = load_docs(docs_dir)
-        render_docs(env, docs_sections, output_dir)
+        try:
+            from reval.leaderboard.docs import load_docs, render_docs
+        except ImportError as exc:
+            logger.warning(
+                "Docs tab requested (--docs %s) but the `[docs]` extra is "
+                "not installed (%s). Skipping docs build. Install with: "
+                "`pip install reval[docs]`.",
+                docs_dir,
+                exc,
+            )
+        else:
+            docs_sections = load_docs(docs_dir)
+            render_docs(env, docs_sections, output_dir)
 
     return build_report
 
