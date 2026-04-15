@@ -234,6 +234,91 @@ def test_docs_tab_click_from_model_page(page: Page, site_url: str) -> None:
     expect(page.locator(".docs-card-grid")).to_be_visible()
 
 
+# ── In-page markdown link rewriting ─────────────────────────────
+
+
+def test_article_has_no_md_hrefs(page: Page, site_url: str) -> None:
+    """Regression for the Cloudflare preview bug where internal
+    docs-to-docs links shipped as `.md` hrefs and 404'd on the host.
+
+    Checks every anchor inside `.docs-article` on a page that we know
+    contains hand-written markdown links (`install.md` has
+    `[Run your first eval](first-eval.md)` and
+    `[Methodology](../concepts/methodology.md)`). None of them may
+    end in `.md` or contain `.md#` — the renderer must rewrite them
+    to `.html` before they hit disk.
+    """
+    page.goto(f"{site_url}/docs/getting-started/install.html")
+    _wait_for_docs_hydration(page)
+
+    offenders = page.evaluate("""() => {
+            const links = document.querySelectorAll('.docs-prose a[href]');
+            const bad = [];
+            for (const a of links) {
+                const href = a.getAttribute('href') || '';
+                // Skip absolute URLs, mailto:, bare anchors, and
+                // root-anchored paths — those are intentionally not
+                // rewritten.
+                if (
+                    href.startsWith('http://') ||
+                    href.startsWith('https://') ||
+                    href.startsWith('mailto:') ||
+                    href.startsWith('#') ||
+                    href.startsWith('/')
+                ) continue;
+                if (href.endsWith('.md') || href.includes('.md#')) {
+                    bad.push(href);
+                }
+            }
+            return bad;
+        }""")
+    assert offenders == [], f"Bare .md hrefs leaked into the article: {offenders}"
+
+
+def test_internal_article_link_navigates_not_404(page: Page, site_url: str) -> None:
+    """End-to-end click-through: follow an internal link inside the
+    prose and verify the target loads cleanly (not 404, and with the
+    docs layout hydrating on the destination).
+
+    The install page's body has `[Run your first eval](first-eval.md)` —
+    after rewriting it should resolve to `first-eval.html` in the same
+    directory, which is a real built page.
+    """
+    page.goto(f"{site_url}/docs/getting-started/install.html")
+    _wait_for_docs_hydration(page)
+
+    # Find the first prose anchor whose href is relative (our
+    # rewriter's target). Scope to `.docs-prose` — the markdown body
+    # wrapper — so we skip the breadcrumb (which lives in
+    # `.docs-article` but outside `.docs-prose` and points to the
+    # docs landing page, which has no `current_page` and therefore
+    # no breadcrumb itself — a click there would fail this test for
+    # the wrong reason).
+    target = page.locator(
+        ".docs-prose a[href$='.html'], .docs-prose a[href*='.html#']"
+    ).first
+    expect(target).to_be_visible()
+    href = target.get_attribute("href")
+    assert href is not None, "no eligible in-article link found"
+    assert not href.endswith(".md"), f"link href is still .md: {href}"
+
+    # Capture the response status for the navigation triggered by
+    # the click so we can assert 200 rather than silently accepting
+    # a 404 HTML page.
+    with page.expect_response(lambda r: r.request.resource_type == "document") as info:
+        target.click()
+    response = info.value
+    assert (
+        response.status == 200
+    ), f"internal article link {href} returned HTTP {response.status}"
+
+    # And the destination must be a real docs page — breadcrumb
+    # confirms the layout hydrated against a `current_page` that the
+    # builder knew about.
+    _wait_for_docs_hydration(page)
+    expect(page.locator(".docs-breadcrumb")).to_be_visible()
+
+
 def test_leaderboard_tab_click_from_docs(page: Page, site_url: str) -> None:
     """Round-trip: Docs landing → Leaderboard tab → leaderboard index."""
     page.goto(f"{site_url}/docs/index.html")

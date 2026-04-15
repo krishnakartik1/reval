@@ -232,6 +232,64 @@ _PRE_WRAP_RE = re.compile(
     re.DOTALL,
 )
 
+# Relative markdown-to-markdown link. Matches `foo.md`,
+# `../concepts/rubrics.md`, `foo.md#anchor`, but NOT absolute URLs
+# (`http://…`, `https://…`, `mailto:…`), root-anchored paths (`/foo.md`),
+# or bare anchors (`#section`). The anchors plugin emits heading ids
+# but the body still carries hand-written `.md` links from the source
+# markdown — we rewrite both ends: the href suffix and any `#anchor`
+# tail is preserved verbatim.
+_INTERNAL_MD_LINK_RE = re.compile(r"^(?!https?://|mailto:|/|#)(.+?)\.md(#.*)?$")
+
+
+def _rewrite_md_links(tokens: list) -> None:
+    """In-place rewrite relative `.md` hrefs to `.html` on `link_open` tokens.
+
+    Walks block and inline token trees recursively — markdown-it emits
+    `link_open` tokens inside an inline token's `children` list, not at
+    the top level, so a non-recursive loop would miss every link in the
+    document body.
+
+    Source markdown like `[install](install.md)` and
+    `[config](../reference/config.md#judge)` is written against the
+    source tree layout, but the build step emits `.html` files. Without
+    this rewrite, every internal docs link 404s on Cloudflare (the host
+    serves `.md` as `text/plain` or returns 404 depending on
+    configuration — see revalbench.com preview deploy 2c1ec109).
+    """
+    for tok in tokens:
+        if tok.type == "link_open" and tok.attrs:
+            _rewrite_link_attrs(tok)
+        children = getattr(tok, "children", None)
+        if children:
+            _rewrite_md_links(children)
+
+
+def _rewrite_link_attrs(token) -> None:
+    """Rewrite a single `link_open` token's `href` attr from `.md` to `.html`.
+
+    Handles both the modern dict-shaped `attrs` (markdown-it-py ≥ 2.x)
+    and the legacy list-of-pairs shape, so the rewrite survives minor
+    version bumps without bisecting.
+    """
+    if isinstance(token.attrs, dict):
+        href = token.attrs.get("href")
+        if isinstance(href, str):
+            new_href = _INTERNAL_MD_LINK_RE.sub(r"\1.html\2", href)
+            if new_href != href:
+                token.attrs["href"] = new_href
+        return
+    # Legacy list-of-[key, value]-pairs format.
+    for i, pair in enumerate(token.attrs):
+        if not pair or pair[0] != "href":
+            continue
+        href = pair[1]
+        if not isinstance(href, str):
+            continue
+        new_href = _INTERNAL_MD_LINK_RE.sub(r"\1.html\2", href)
+        if new_href != href:
+            token.attrs[i] = [pair[0], new_href]
+
 
 def _wrap_code_blocks_for_copy(html: str) -> str:
     """Wrap every top-level `<pre>` in a copy-button Alpine scaffold.
@@ -273,6 +331,7 @@ def _render_markdown(body: str) -> tuple[str, list[TocEntry]]:
     md = _build_markdown_renderer()
     env: dict = {}
     tokens = md.parse(body, env)
+    _rewrite_md_links(tokens)
     toc = _extract_toc(tokens)
     html = md.renderer.render(tokens, md.options, env)
     html = _wrap_code_blocks_for_copy(html)

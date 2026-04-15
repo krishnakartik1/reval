@@ -10,6 +10,7 @@ workspace coverage floor.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -177,6 +178,74 @@ class TestRenderMarkdown:
     def test_no_code_means_no_copy_wrap(self) -> None:
         html, _ = _render_markdown("Just prose, no code blocks.\n")
         assert "code-wrap" not in html
+
+
+class TestInternalMdLinkRewrite:
+    """Regression for the Cloudflare preview bug where internal
+    docs-to-docs links stayed as `.md` (404 on the deployed host)
+    instead of being rewritten to the emitted `.html` filenames.
+    """
+
+    def test_plain_md_link_rewritten(self) -> None:
+        html, _ = _render_markdown("See [install](install.md).")
+        assert 'href="install.html"' in html
+        assert ".md" not in html.split('href="')[1].split('"')[0]
+
+    def test_md_link_with_anchor_preserves_fragment(self) -> None:
+        html, _ = _render_markdown("See [cfg](../reference/config.md#judge).")
+        assert 'href="../reference/config.html#judge"' in html
+
+    def test_relative_parent_md_link_rewritten(self) -> None:
+        html, _ = _render_markdown("See [m](../concepts/methodology.md).")
+        assert 'href="../concepts/methodology.html"' in html
+
+    def test_external_md_link_untouched(self) -> None:
+        html, _ = _render_markdown("See [ext](https://example.com/foo.md).")
+        assert 'href="https://example.com/foo.md"' in html
+
+    def test_bare_anchor_untouched(self) -> None:
+        html, _ = _render_markdown("Jump to [here](#section).")
+        assert 'href="#section"' in html
+
+    def test_root_anchored_md_link_untouched(self) -> None:
+        # Root-anchored paths are treated as absolute by the browser and
+        # are not ours to rewrite — the user wrote them deliberately.
+        html, _ = _render_markdown("See [root](/docs/foo.md).")
+        assert 'href="/docs/foo.md"' in html
+
+    def test_mailto_untouched(self) -> None:
+        html, _ = _render_markdown("Email [me](mailto:a@b.md).")
+        assert 'href="mailto:a@b.md"' in html
+
+    def test_no_md_hrefs_in_rendered_source_tree(self, tmp_path: Path) -> None:
+        """End-to-end regression guard: no page built from the real
+        `reval/docs/` source tree may ship with a bare `.md` href.
+        This is the exact failure mode that reached the Cloudflare
+        preview deploy — every `.md` link in the source markdown
+        must be rewritten to `.html` before hitting disk.
+        """
+        repo_root = Path(__file__).resolve().parent.parent
+        real_docs = repo_root / "docs"
+        if not real_docs.exists():
+            pytest.skip("reval/docs/ not present (wheel install)")
+        sections = load_docs(real_docs)
+        render_docs(_jinja_env(), sections, tmp_path)
+
+        offenders: list[str] = []
+        for html_path in (tmp_path / "docs").rglob("*.html"):
+            body = html_path.read_text(encoding="utf-8")
+            # A rendered docs page must not contain `href="...md"` or
+            # `href="...md#..."` for any relative target. Absolute
+            # URLs are fine — filter them out before matching.
+            for match in re.finditer(r'href="([^"]+)"', body):
+                href = match.group(1)
+                if href.startswith(("http://", "https://", "mailto:", "#", "/")):
+                    continue
+                if href.endswith(".md") or ".md#" in href:
+                    offenders.append(f"{html_path.name}: {href}")
+        assert not offenders, "Bare `.md` hrefs in rendered docs: " + "; ".join(
+            offenders
+        )
 
 
 class TestExtractTocDirect:
