@@ -32,11 +32,7 @@ def pytest_collection_modifyitems(config, items):
     tests/ and break any default `pytest tests/` run.
     """
     for item in items:
-        try:
-            item_path = Path(item.fspath).resolve()
-        except (AttributeError, TypeError):
-            continue
-        if not item_path.is_relative_to(UI_TEST_DIR):
+        if not item.path.is_relative_to(UI_TEST_DIR):
             continue
         if inspect.iscoroutinefunction(getattr(item, "function", None)):
             raise pytest.UsageError(
