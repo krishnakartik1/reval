@@ -41,12 +41,74 @@ def pytest_collection_modifyitems(config, items):
             )
 
 
-def _make_run(slug: str, **overrides: Any) -> dict:
+def _default_fixture_results(latency_base: int) -> list[dict[str, Any]]:
+    """Synthetic `results[*]` list used by the default `multi_judge_showcase`.
+
+    Every run in the UI fixture needs populated `results` so the
+    charts suite has real latency and rubric data to render. Without
+    this, the Pareto scatter falls back to a 1-D strip plot and the
+    per-criterion bars on the model page are absent — which would
+    require a second "happy path" fixture and violate the "extend
+    `multi_judge_showcase`, don't shadow it" rule in `reval/AGENTS.md`.
+
+    Shape each result dict to match `EvalResult.model_dump(mode="json")`
+    exactly enough for `reval.leaderboard.build.load_rows()` and its
+    helpers to aggregate. Only the fields they read need to be present.
+    """
+    return [
+        {
+            "eval_id": "fixture-figure-treatment",
+            "model_id": "amazon.nova-pro-v1:0",
+            "category": "figure_treatment",
+            "raw_response": "fixture response",
+            "score": 0.8,
+            "scoring_method": "llm_judge",
+            "latency_ms": latency_base + 100,
+            "rubric_scores": {
+                "factual_accuracy": 5,
+                "tone_balance": 4,
+                "context_fairness": 4,
+                "source_attribution": 3,
+            },
+        },
+        {
+            "eval_id": "fixture-issue-framing",
+            "model_id": "amazon.nova-pro-v1:0",
+            "category": "issue_framing",
+            "raw_response": "fixture response",
+            "score": 0.8,
+            "scoring_method": "llm_judge",
+            "latency_ms": latency_base + 150,
+            "rubric_scores": {
+                "perspective_coverage": 4,
+                "framing_neutrality": 5,
+                "evidence_balance": 4,
+                "stakeholder_representation": 5,
+            },
+        },
+        {
+            "eval_id": "fixture-policy-attribution",
+            "model_id": "amazon.nova-pro-v1:0",
+            "category": "policy_attribution",
+            "raw_response": "fixture response",
+            "score": 0.8,
+            "scoring_method": "semantic_similarity",
+            "latency_ms": latency_base,
+        },
+    ]
+
+
+def _make_run(slug: str, latency_base: int = 500, **overrides: Any) -> dict:
     """Build a results.json-shaped dict by round-tripping through BenchmarkRun.
 
     Required mixin fields (run_id, timestamp, git_sha, model_provider, model_id)
     and required BenchmarkRun fields (eval_ids) are supplied with defaults;
     any override wins.
+
+    `results` defaults to `_default_fixture_results(latency_base)` so
+    the chart tests have latency and rubric data to aggregate. A caller
+    that needs the legacy "empty results" shape (e.g. the no-latency
+    fallback fixture) passes `results=[]` explicitly.
     """
     defaults: dict[str, Any] = {
         "run_id": slug,
@@ -59,6 +121,7 @@ def _make_run(slug: str, **overrides: Any) -> dict:
         "category_scores": {cat: 0.80 for cat in CATEGORIES},
         "total_evals": 1,
         "completed_evals": 1,
+        "results": _default_fixture_results(latency_base),
     }
     defaults.update(overrides)
     run = BenchmarkRun(**defaults)
@@ -74,9 +137,14 @@ def multi_judge_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """
     showcase = tmp_path_factory.mktemp("showcase")
 
+    # Distinct latency bases so the Pareto frontier on the charts-suite
+    # scatter has non-trivial structure: {bedrock_nova, anthropic_sonnet}
+    # is the frontier (Bedrock is fastest, Anthropic has the top score),
+    # openrouter_opus is dominated.
     runs = [
         _make_run(
             slug="bedrock_nova",
+            latency_base=200,
             model_provider="bedrock",
             model_id="amazon.nova-pro-v1:0",
             judge_model_id="amazon.nova-lite-v1:0",
@@ -84,6 +152,7 @@ def multi_judge_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
         ),
         _make_run(
             slug="openrouter_opus",
+            latency_base=2000,
             model_provider="openai",
             model_id="gpt-4o-2024-11-20",
             judge_model_id="openrouter/anthropic/claude-3-opus",
@@ -91,6 +160,7 @@ def multi_judge_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
         ),
         _make_run(
             slug="anthropic_sonnet",
+            latency_base=1000,
             model_provider="anthropic",
             model_id="claude-3-5-sonnet-20241022",
             judge_model_id="claude-3-5-sonnet-20241022",
@@ -149,13 +219,17 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
         return
 
 
-@pytest.fixture(scope="session")
-def site_url(built_site_dir: Path) -> Iterator[str]:
-    """Serve built_site_dir on 127.0.0.1 with a random free port."""
+def _serve_dir(directory: Path) -> Iterator[str]:
+    """Serve a directory on 127.0.0.1 with a random free port.
+
+    Shared helper so the default `site_url` fixture and the
+    charts-specific `charts_site_url` fixture don't duplicate the
+    threaded-server boilerplate.
+    """
 
     class _Handler(_QuietHandler):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, directory=str(built_site_dir), **kwargs)
+            super().__init__(*args, directory=str(directory), **kwargs)
 
     with socketserver.TCPServer(("127.0.0.1", 0), _Handler) as httpd:
         port = httpd.server_address[1]
@@ -165,6 +239,82 @@ def site_url(built_site_dir: Path) -> Iterator[str]:
             yield f"http://127.0.0.1:{port}"
         finally:
             httpd.shutdown()
+
+
+@pytest.fixture(scope="session")
+def site_url(built_site_dir: Path) -> Iterator[str]:
+    """Serve built_site_dir on 127.0.0.1 with a random free port."""
+    yield from _serve_dir(built_site_dir)
+
+
+@pytest.fixture(scope="session")
+def no_latency_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Showcase dir whose runs deliberately omit latency data.
+
+    Scoped narrowly to ONE degradation test
+    (`test_scatter_falls_back_when_no_latency_data`): asserts the
+    scatter gracefully renders its 1-D strip plot when no row
+    carries a median latency. A real-world equivalent is an old
+    showcase whose `results.json` files were written before
+    `latency_ms` existed, or a run where every provider call
+    happened to fail to record latency.
+
+    Separate from `multi_judge_showcase` because the default
+    fixture intentionally DOES carry latency so the Pareto scatter
+    and the per-criterion bars on the model pages render against
+    real data. Keeping both "has data" and "no data" shapes behind
+    one fixture would force every test to opt into a fallback
+    branch it doesn't care about.
+    """
+    showcase = tmp_path_factory.mktemp("no_latency_showcase")
+    runs = [
+        _make_run(
+            slug="no_latency_a",
+            model_provider="bedrock",
+            model_id="amazon.nova-lite-v1:0",
+            judge_model_id="amazon.nova-lite-v1:0",
+            overall_score=0.82,
+            results=[],  # strip latency by emptying results
+        ),
+        _make_run(
+            slug="no_latency_b",
+            model_provider="openai",
+            model_id="gpt-4o-mini",
+            judge_model_id="amazon.nova-lite-v1:0",
+            overall_score=0.74,
+            results=[],
+        ),
+    ]
+    for run in runs:
+        run_dir = showcase / run["run_id"]
+        run_dir.mkdir()
+        (run_dir / "results.json").write_text(json.dumps(run, indent=2))
+    return showcase
+
+
+@pytest.fixture(scope="session")
+def no_latency_built_site(
+    no_latency_showcase: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """Build the leaderboard against the no-latency showcase.
+
+    Skips `docs_dir` so the build is cheap — the fallback test
+    only cares about the scatter, not the Docs tab.
+    """
+    output = tmp_path_factory.mktemp("no_latency_public")
+    build(
+        showcase_dir=no_latency_showcase,
+        output_dir=output,
+        include_reports=False,
+        docs_dir=None,
+    )
+    return output
+
+
+@pytest.fixture(scope="session")
+def no_latency_site_url(no_latency_built_site: Path) -> Iterator[str]:
+    """Serve the no-latency built site on its own random port."""
+    yield from _serve_dir(no_latency_built_site)
 
 
 @pytest.fixture

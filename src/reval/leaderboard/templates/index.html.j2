@@ -253,19 +253,77 @@
     {% endif %}
   </section>
 
-  {# ── SCATTER: overall_score × completed_evals ─────────────── #}
+  {# ── SCATTER: overall_score × median latency (Pareto) ─────── #}
 
   {% if rows|length > 0 %}
   <section class="mt-24 reveal reveal-4">
     <div class="flex items-baseline justify-between mb-4">
-      <div class="eyebrow">Distribution</div>
+      <div class="eyebrow">Speed vs quality</div>
       <div class="text-[11px]" style="color: var(--fg-dim);">
-        overall score × coverage
+        overall score × median latency (log)
       </div>
     </div>
     <div class="scatter-card">
       <div style="height: 320px;">
-        <canvas id="scatterChart"></canvas>
+        <canvas id="scatterChart"
+                role="img"
+                aria-label="Scatter plot of overall score against median latency. See the leaderboard table above for the same data in accessible form."></canvas>
+      </div>
+      <p id="scatterFallbackNote"
+         class="mt-3 text-[11px] leading-[1.6]"
+         style="color: var(--fg-dim); display: none;">
+        Latency data not available for any run in this view — showing
+        overall scores as a 1-D strip instead.
+      </p>
+      <p class="mt-3 text-[11px] leading-[1.6]" style="color: var(--fg-dim);">
+        Points on the <span style="color: var(--fg);">dashed frontier</span> are
+        Pareto-optimal — no other run is both faster and higher-scoring.
+        Points below the frontier are strictly dominated by at least one
+        alternative.
+      </p>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ── HEATMAP: model × category ────────────────────────────── #}
+
+  {% if rows|length > 0 %}
+  <section class="mt-24 reveal reveal-4" aria-labelledby="heatmap-title">
+    <div class="flex items-baseline justify-between mb-4">
+      <div class="eyebrow" id="heatmap-title">Category heatmap</div>
+      <div class="text-[11px]" style="color: var(--fg-dim);">
+        click a row to open the per-model page
+      </div>
+    </div>
+    <div class="heatmap-wrap">
+      <div class="heatmap-grid"
+           role="table"
+           aria-label="Model-by-category score heatmap">
+        <div role="row" class="heatmap-header">
+          <div role="columnheader" class="heatmap-cell-label">Model</div>
+          <template x-for="cat in categoryKeys" :key="cat">
+            <div role="columnheader"
+                 class="heatmap-cell"
+                 x-text="cat"></div>
+          </template>
+        </div>
+        <template x-for="row in sortedFilteredRows" :key="row.slug">
+          <div role="row"
+               class="heatmap-row"
+               :class="{'is-clickable': row.report_href}"
+               @click="row.report_href && (location.href = row.report_href)">
+            <div role="rowheader"
+                 class="heatmap-cell-label"
+                 x-text="row.model_id"></div>
+            <template x-for="cat in categoryKeys" :key="cat">
+              <div role="cell"
+                   class="heatmap-cell"
+                   :class="scoreColor(row.category_scores[cat])"
+                   :title="cat + ': ' + fmtScore(row.category_scores[cat])"
+                   x-text="fmtScore(row.category_scores[cat])"></div>
+            </template>
+          </div>
+        </template>
       </div>
     </div>
   </section>
@@ -408,77 +466,206 @@
         return Number(score).toFixed(3);
       },
 
+      /**
+       * Compute the Pareto frontier for top-left dominance
+       * (lower x = faster is better, higher y = better score).
+       *
+       * Algorithm: sort ascending by x, sweep keeping each point
+       * whose y is STRICTLY GREATER than every prior kept point's y.
+       * Ties on (x, y) resolve to the first-seen — intentional so
+       * the frontier is a single connected line, not a staircase
+       * with duplicate rungs.
+       *
+       * Exposed on the component scope so the Playwright UI suite
+       * can call it directly via page.evaluate() rather than
+       * pixel-scraping a Chart.js canvas.
+       */
+      paretoFrontier(points) {
+        if (!points || points.length === 0) return [];
+        var sorted = points.slice().sort(function (a, b) {
+          if (a.x !== b.x) return a.x - b.x;
+          return b.y - a.y; // tiebreak: higher-y first so it wins
+        });
+        var kept = [];
+        var bestY = -Infinity;
+        for (var i = 0; i < sorted.length; i++) {
+          if (sorted[i].y > bestY) {
+            kept.push(sorted[i]);
+            bestY = sorted[i].y;
+          }
+        }
+        return kept;
+      },
+
       renderScatter() {
         var canvas = document.getElementById('scatterChart');
         if (!canvas || !window.Chart) return;
-        // Idempotent — destroy any prior Chart bound to this canvas before re-drawing.
-        var existing = Chart.getChart(canvas);
-        if (existing) existing.destroy();
-        var rows = this.allRows.filter(r => r.overall_score != null);
-        if (rows.length === 0) return;
+        try {
+          // Idempotent — destroy any prior Chart bound to this canvas.
+          var existing = Chart.getChart(canvas);
+          if (existing) existing.destroy();
+          var rows = this.allRows.filter(function (r) {
+            return r.overall_score != null;
+          });
+          if (rows.length === 0) return;
 
-        var isDark = document.documentElement.getAttribute('data-theme') === 'dark'
-          || (!document.documentElement.getAttribute('data-theme')
-              && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+            || (!document.documentElement.getAttribute('data-theme')
+                && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-        var axisColor = isDark ? 'rgba(143,138,126,0.8)' : 'rgba(107,102,96,0.85)';
-        var gridColor = isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)';
-        var accent    = isDark ? '#d47a47' : '#a85c32';
+          var axisColor = isDark ? 'rgba(143,138,126,0.8)' : 'rgba(107,102,96,0.85)';
+          var gridColor = isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)';
+          var accent    = isDark ? '#d47a47' : '#a85c32';
+          var frontierColor = isDark ? 'rgba(212,207,192,0.55)' : 'rgba(90,85,80,0.45)';
 
-        var points = rows.map(function (r) {
-          return { x: r.completed_evals || 0, y: r.overall_score, label: r.model_id };
-        });
+          // Split rows into those with and without latency data.
+          // Log scale requires strictly positive x, so filter out 0 and
+          // negative values too — Chart.js's logarithmic axis crashes
+          // on log(0) = -Infinity.
+          var rowsWithLatency = rows.filter(function (r) {
+            return typeof r.latency_p50_ms === 'number' && r.latency_p50_ms > 0;
+          });
+          var fallbackMode = rowsWithLatency.length === 0;
 
-        new Chart(canvas.getContext('2d'), {
-          type: 'scatter',
-          data: {
-            datasets: [{
+          var points, datasets, xScale;
+          if (fallbackMode) {
+            // 1-D strip plot on the y-axis only, constant x with jitter.
+            var jitterRows = rows.slice();
+            points = jitterRows.map(function (r, i) {
+              return {
+                x: 0.5 + ((i % 5) - 2) * 0.08, // horizontal spread
+                y: r.overall_score,
+                label: r.model_id,
+                latencyLabel: 'n/a',
+              };
+            });
+            datasets = [{
               data: points,
               backgroundColor: accent + 'cc',
               borderColor: accent,
               borderWidth: 1.2,
               pointRadius: 6,
               pointHoverRadius: 9,
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                backgroundColor: isDark ? '#17140f' : '#faf8f3',
-                titleColor: isDark ? '#f5f0e3' : '#1a1a1a',
-                bodyColor: isDark ? '#d4cfc0' : '#3d3d3d',
+            }];
+            xScale = {
+              type: 'linear',
+              min: 0,
+              max: 1,
+              display: false,
+            };
+          } else {
+            points = rowsWithLatency.map(function (r) {
+              return {
+                x: r.latency_p50_ms,
+                y: r.overall_score,
+                label: r.model_id,
+                latencyLabel: (r.latency_p50_ms / 1000).toFixed(2) + ' s',
+              };
+            });
+            var frontier = this.paretoFrontier(points);
+            datasets = [
+              {
+                // Pareto frontier rendered as a dashed line UNDERNEATH
+                // the points (Chart.js draws datasets in order). Listed
+                // first so points layer on top.
+                type: 'line',
+                data: frontier,
+                borderColor: frontierColor,
+                borderDash: [4, 4],
+                borderWidth: 1.3,
+                pointRadius: 0,
+                fill: false,
+                tension: 0,
+              },
+              {
+                data: points,
+                backgroundColor: accent + 'cc',
                 borderColor: accent,
-                borderWidth: 1,
-                padding: 12,
-                titleFont: { family: 'JetBrains Mono, monospace', size: 12, weight: '500' },
-                bodyFont: { family: 'Inter, sans-serif', size: 11 },
-                callbacks: {
-                  title: function (items) { return items[0].raw.label; },
-                  label: function (ctx) {
-                    return 'overall ' + ctx.raw.y.toFixed(3) + ' · ' + ctx.raw.x + ' evals';
+                borderWidth: 1.2,
+                pointRadius: 6,
+                pointHoverRadius: 9,
+              },
+            ];
+            xScale = {
+              type: 'logarithmic',
+              title: {
+                display: true,
+                text: 'median latency (ms)',
+                color: axisColor,
+                font: { family: 'Inter', size: 10, weight: '500' },
+              },
+              ticks: {
+                color: axisColor,
+                font: { family: 'JetBrains Mono, monospace', size: 10 },
+              },
+              grid: { color: gridColor },
+            };
+          }
+
+          new Chart(canvas.getContext('2d'), {
+            type: 'scatter',
+            data: { datasets: datasets },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  filter: function (ctx) {
+                    // Hide tooltips on the Pareto line segments themselves —
+                    // only show on the actual data points.
+                    return ctx.dataset.type !== 'line';
+                  },
+                  backgroundColor: isDark ? '#17140f' : '#faf8f3',
+                  titleColor: isDark ? '#f5f0e3' : '#1a1a1a',
+                  bodyColor: isDark ? '#d4cfc0' : '#3d3d3d',
+                  borderColor: accent,
+                  borderWidth: 1,
+                  padding: 12,
+                  titleFont: { family: 'JetBrains Mono, monospace', size: 12, weight: '500' },
+                  bodyFont: { family: 'Inter, sans-serif', size: 11 },
+                  callbacks: {
+                    title: function (items) { return items[0].raw.label; },
+                    label: function (ctx) {
+                      return 'overall ' + ctx.raw.y.toFixed(3) + ' · p50 ' + ctx.raw.latencyLabel;
+                    }
                   }
                 }
-              }
-            },
-            scales: {
-              x: {
-                title: { display: true, text: 'evals completed', color: axisColor, font: { family: 'Inter', size: 10, weight: '500' } },
-                ticks: { color: axisColor, font: { family: 'JetBrains Mono, monospace', size: 10 } },
-                grid: { color: gridColor }
               },
-              y: {
-                title: { display: true, text: 'overall score', color: axisColor, font: { family: 'Inter', size: 10, weight: '500' } },
-                min: 0.5,
-                max: 1,
-                ticks: { color: axisColor, font: { family: 'JetBrains Mono, monospace', size: 10 } },
-                grid: { color: gridColor }
+              scales: {
+                x: xScale,
+                y: {
+                  title: {
+                    display: true,
+                    text: 'overall score',
+                    color: axisColor,
+                    font: { family: 'Inter', size: 10, weight: '500' },
+                  },
+                  min: 0.5,
+                  max: 1,
+                  ticks: {
+                    color: axisColor,
+                    font: { family: 'JetBrains Mono, monospace', size: 10 },
+                  },
+                  grid: { color: gridColor },
+                }
               }
             }
+          });
+
+          // Expose fallback state to the DOM so tests (and the page
+          // subtitle) can detect it without reading the Chart instance.
+          canvas.setAttribute('data-fallback', fallbackMode ? 'true' : 'false');
+          var fallbackNote = document.getElementById('scatterFallbackNote');
+          if (fallbackNote) {
+            fallbackNote.style.display = fallbackMode ? '' : 'none';
           }
-        });
+        } catch (err) {
+          // Swallow Chart.js init errors so Alpine's init() chain
+          // (and therefore the heatmap, which also binds to this
+          // component) continues to mount. See plan § "Crash safety".
+          console.warn('renderScatter failed:', err);
+        }
       }
     };
   }

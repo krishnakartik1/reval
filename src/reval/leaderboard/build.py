@@ -32,6 +32,7 @@ import shutil
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
+from statistics import median
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
@@ -96,6 +97,23 @@ class LeaderboardRow(BaseModel):
     #: model pages link to this if set.
     report_href: str | None = None
 
+    #: Median latency in ms across every `EvalResult.latency_ms` in the
+    #: run. `None` when no result recorded a latency — older showcase
+    #: entries written before the field existed, or runs where every
+    #: provider path failed to record it. The scatter chart on the
+    #: index page falls back to a 1-D strip plot when this is `None`.
+    latency_p50_ms: float | None = None
+
+    #: Per-category per-criterion mean scores, normalized to 0-1 from
+    #: the judge's raw 1-5 Likert output. Shape:
+    #: `{"figure_treatment": {"factual_accuracy": 0.86, ...},
+    #:   "issue_framing": {"perspective_coverage": 0.74, ...}}`.
+    #: Only `figure_treatment` and `issue_framing` populate this —
+    #: `argumentation_parity` has `rubric_scores` too but its dotted
+    #: key shape (`A.logic`, `B.logic`) does not fit a flat horizontal
+    #: bar chart, so it is excluded by whitelist.
+    aggregated_rubric_scores: dict[str, dict[str, float]] = Field(default_factory=dict)
+
 
 def load_rows(showcase_dir: Path) -> list[LeaderboardRow]:
     """Scan a showcase directory and return one row per `results.json`.
@@ -127,6 +145,7 @@ def load_rows(showcase_dir: Path) -> list[LeaderboardRow]:
             continue
 
         report_path = entry / "report.html"
+        raw_results = data.get("results") or []
         row = LeaderboardRow(
             slug=entry.name,
             model_id=data.get("model_id", "unknown"),
@@ -141,6 +160,8 @@ def load_rows(showcase_dir: Path) -> list[LeaderboardRow]:
             timestamp=data.get("timestamp"),
             git_sha=data.get("git_sha"),
             report_href=f"reports/{entry.name}.html" if report_path.exists() else None,
+            latency_p50_ms=_median_latency(raw_results),
+            aggregated_rubric_scores=_aggregate_rubric_scores(raw_results),
         )
         rows.append(row)
 
@@ -158,6 +179,98 @@ def _collect_categories(rows: list[LeaderboardRow]) -> list[str]:
     for row in rows:
         categories.update(row.category_scores.keys())
     return sorted(categories)
+
+
+#: Categories whose `rubric_scores` flatten cleanly into a per-criterion
+#: horizontal bar. `argumentation_parity` also populates `rubric_scores`
+#: but with dotted `A.<metric>` / `B.<metric>` keys (see
+#: `reval.scoring.parity.score_argumentation_parity`), so it is excluded
+#: by whitelist — a parity-shaped panel is a v2 follow-up.
+_RUBRIC_BAR_CATEGORIES = frozenset({"figure_treatment", "issue_framing"})
+
+
+def _median_latency(results: list[dict]) -> float | None:
+    """Median of `latency_ms` across raw result dicts that recorded it.
+
+    Operates on raw result dicts rather than typed `EvalResult`, so it
+    plugs into `load_rows()`'s existing lazy JSON parse (results.json
+    is never validated through the full `BenchmarkRun` model).
+
+    Tolerates three sparsity modes:
+      - result has `latency_ms = None` (recent runs where the field was
+        left unpopulated on a failure branch)
+      - result omits the `latency_ms` key entirely (legacy runs written
+        before the field was introduced)
+      - empty `results` list
+
+    In all three cases the function returns `None`, which the scatter
+    chart renders as a "latency data not available" fallback.
+    """
+    latencies = [
+        r["latency_ms"] for r in results if isinstance(r.get("latency_ms"), int | float)
+    ]
+    if not latencies:
+        return None
+    return float(median(latencies))
+
+
+def _aggregate_rubric_scores(
+    results: list[dict],
+) -> dict[str, dict[str, float]]:
+    """Per-category per-criterion mean scores, normalized to 0-1.
+
+    The LLM judge emits raw 1-5 Likert ints into `rubric_scores` (see
+    `reval.scoring.judge.score_with_judge` line 169). This helper
+    normalizes each score via `(raw - 1) / 4` so the leaderboard charts
+    share a 0-1 palette with category scores.
+
+    Only `figure_treatment` and `issue_framing` are aggregated
+    (`_RUBRIC_BAR_CATEGORIES`). `argumentation_parity` is excluded by
+    whitelist because its dotted-key shape does not fit a flat
+    horizontal bar chart — a parity panel is a v2 task.
+
+    Out-of-range raw scores (< 1 or > 5) are dropped with a warning log
+    rather than clamped, so judge drift or parser coercion bugs surface
+    instead of hiding as silent green bars. Non-numeric values are
+    skipped the same way.
+
+    Categories with zero valid scores are absent from the return value
+    (not empty-dict), so the frontend can use
+    `cat in aggregated_rubric_scores` as its "has data" predicate.
+    """
+    buckets: dict[str, dict[str, list[float]]] = {}
+    for r in results:
+        category = r.get("category")
+        if category not in _RUBRIC_BAR_CATEGORIES:
+            continue
+        rubric_scores = r.get("rubric_scores") or {}
+        if not rubric_scores:
+            continue
+        bucket = buckets.setdefault(category, {})
+        for criterion, raw in rubric_scores.items():
+            if not isinstance(raw, int | float) or isinstance(raw, bool):
+                continue
+            raw_f = float(raw)
+            if not (1.0 <= raw_f <= 5.0):
+                logger.warning(
+                    "rubric_scores out-of-range: category=%s "
+                    "criterion=%s raw=%s — dropped from aggregate",
+                    category,
+                    criterion,
+                    raw,
+                )
+                continue
+            normalized = (raw_f - 1.0) / 4.0
+            bucket.setdefault(criterion, []).append(normalized)
+
+    return {
+        category: {
+            criterion: sum(values) / len(values)
+            for criterion, values in criteria.items()
+        }
+        for category, criteria in buckets.items()
+        if criteria
+    }
 
 
 def _average_category_scores(

@@ -17,8 +17,10 @@ import pytest
 
 from reval.leaderboard import LeaderboardRow, build, load_rows
 from reval.leaderboard.build import (
+    _aggregate_rubric_scores,
     _collect_categories,
     _fmt_score,
+    _median_latency,
     _score_color,
 )
 
@@ -217,6 +219,193 @@ class TestFmtScore:
         assert _fmt_score(None) == "—"
 
 
+# ── _median_latency ────────────────────────────────────────────────────
+
+
+class TestMedianLatency:
+    def test_populated_results(self) -> None:
+        results = [{"latency_ms": x} for x in (100, 200, 300, 400, 500)]
+        assert _median_latency(results) == 300.0
+
+    def test_all_none_returns_none(self) -> None:
+        results = [{"latency_ms": None} for _ in range(3)]
+        assert _median_latency(results) is None
+
+    def test_missing_key_returns_none(self) -> None:
+        """Legacy results.json files written before latency_ms existed.
+
+        The key is simply absent from each result dict — not `None`.
+        The helper must tolerate both shapes.
+        """
+        results = [{"eval_id": f"r{i}", "category": "issue_framing"} for i in range(3)]
+        assert _median_latency(results) is None
+
+    def test_mixed_missing_and_populated(self) -> None:
+        """Partial coverage still yields a median from the populated subset."""
+        results = [
+            {"latency_ms": 100},
+            {"latency_ms": None},
+            {},  # missing
+            {"latency_ms": 500},
+        ]
+        assert _median_latency(results) == 300.0
+
+    def test_empty_list_returns_none(self) -> None:
+        assert _median_latency([]) is None
+
+
+# ── _aggregate_rubric_scores ──────────────────────────────────────────
+
+
+class TestAggregateRubricScores:
+    def test_normalizes_likert_to_zero_one(self) -> None:
+        """Raw 1-5 judge output → normalized 0-1 means.
+
+        This is the load-bearing test for the bar-chart palette: the
+        leaderboard charts expect 0-1, but the judge emits raw ints
+        at `reval.scoring.judge.score_with_judge:169`.
+        """
+        results = [
+            {
+                "category": "figure_treatment",
+                "rubric_scores": {"tone_balance": 5, "factual_accuracy": 3},
+            },
+            {
+                "category": "figure_treatment",
+                "rubric_scores": {"tone_balance": 3, "factual_accuracy": 1},
+            },
+        ]
+        aggregated = _aggregate_rubric_scores(results)
+        assert aggregated == {
+            "figure_treatment": {
+                # (1.0 + 0.5) / 2 = 0.75
+                "tone_balance": pytest.approx(0.75),
+                # (0.5 + 0.0) / 2 = 0.25
+                "factual_accuracy": pytest.approx(0.25),
+            }
+        }
+
+    def test_whitelists_rubric_categories(self) -> None:
+        """Only figure_treatment and issue_framing are aggregated.
+
+        `policy_attribution` uses similarity scoring (no rubric_scores),
+        and `argumentation_parity` uses dotted `A.x`/`B.x` keys that
+        don't fit a flat bar chart — both must be excluded.
+        """
+        results = [
+            {
+                "category": "policy_attribution",
+                "rubric_scores": {},
+            },
+            {
+                "category": "argumentation_parity",
+                "rubric_scores": {"A.logic": 4, "B.logic": 2},
+            },
+            {
+                "category": "figure_treatment",
+                "rubric_scores": {"tone_balance": 5},
+            },
+        ]
+        aggregated = _aggregate_rubric_scores(results)
+        assert set(aggregated.keys()) == {"figure_treatment"}
+        assert "A.logic" not in aggregated.get("figure_treatment", {})
+
+    def test_empty_results_returns_empty_dict(self) -> None:
+        assert _aggregate_rubric_scores([]) == {}
+
+    def test_drops_out_of_range_values(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Out-of-range (0, 6) values are dropped + logged, not clamped.
+
+        Clamping would silently hide a judge-drift bug as an extra
+        green bar. Surfacing via log lets us notice it.
+        """
+        results = [
+            {
+                "category": "figure_treatment",
+                "rubric_scores": {
+                    "tone_balance": 6,  # out of range
+                    "factual_accuracy": 5,  # valid
+                },
+            },
+            {
+                "category": "figure_treatment",
+                "rubric_scores": {
+                    "tone_balance": 0,  # out of range
+                    "factual_accuracy": 3,
+                },
+            },
+        ]
+        with caplog.at_level("WARNING"):
+            aggregated = _aggregate_rubric_scores(results)
+        # tone_balance dropped entirely from both results
+        assert "tone_balance" not in aggregated["figure_treatment"]
+        assert aggregated["figure_treatment"]["factual_accuracy"] == pytest.approx(0.75)
+        assert any("out-of-range" in rec.message for rec in caplog.records)
+
+    def test_skips_non_numeric_and_boolean(self) -> None:
+        """Non-numeric values are quietly skipped (malformed judge output)."""
+        results = [
+            {
+                "category": "figure_treatment",
+                "rubric_scores": {
+                    "tone_balance": "5",  # string — skipped
+                    "factual_accuracy": 4,
+                    "source_attribution": True,  # bool — skipped (bool is int subclass)
+                },
+            },
+        ]
+        aggregated = _aggregate_rubric_scores(results)
+        assert aggregated == {
+            "figure_treatment": {"factual_accuracy": pytest.approx(0.75)},
+        }
+
+
+# ── load_rows() → new LeaderboardRow fields ────────────────────────────
+
+
+class TestLoadRowsNewFields:
+    def test_populates_latency_p50_from_results(self, tmp_path: Path) -> None:
+        showcase = tmp_path / "showcase"
+        data = _mock_result("gpt-4o", "openai", 0.85, {"issue_framing": 0.85})
+        data["results"] = [
+            {"category": "issue_framing", "latency_ms": 100},
+            {"category": "issue_framing", "latency_ms": 300},
+            {"category": "issue_framing", "latency_ms": 500},
+        ]
+        _write_showcase_entry(showcase, "run", data)
+        rows = load_rows(showcase)
+        assert rows[0].latency_p50_ms == 300.0
+
+    def test_populates_aggregated_rubric_scores(self, tmp_path: Path) -> None:
+        showcase = tmp_path / "showcase"
+        data = _mock_result("gpt-4o", "openai", 0.85, {"figure_treatment": 0.80})
+        data["results"] = [
+            {
+                "category": "figure_treatment",
+                "latency_ms": 200,
+                "rubric_scores": {"tone_balance": 5, "factual_accuracy": 3},
+            },
+        ]
+        _write_showcase_entry(showcase, "run", data)
+        rows = load_rows(showcase)
+        agg = rows[0].aggregated_rubric_scores
+        assert "figure_treatment" in agg
+        assert agg["figure_treatment"]["tone_balance"] == pytest.approx(1.0)
+        assert agg["figure_treatment"]["factual_accuracy"] == pytest.approx(0.5)
+
+    def test_missing_results_key_defaults_cleanly(self, tmp_path: Path) -> None:
+        """A results.json without a top-level `results` key (legacy or
+        malformed) emits a row with `latency_p50_ms=None` and
+        empty `aggregated_rubric_scores`."""
+        showcase = tmp_path / "showcase"
+        data = _mock_result("gpt-4o", "openai", 0.85, {"issue_framing": 0.85})
+        data.pop("results", None)
+        _write_showcase_entry(showcase, "run", data)
+        rows = load_rows(showcase)
+        assert rows[0].latency_p50_ms is None
+        assert rows[0].aggregated_rubric_scores == {}
+
+
 # ── build() end-to-end ─────────────────────────────────────────────────
 
 
@@ -358,6 +547,114 @@ class TestBuild:
         # gpt-4o row in leaderboard.json doesn't have issue_framing
         gpt_row = next(r for r in data["rows"] if r["model_id"] == "gpt-4o")
         assert "issue_framing" not in gpt_row["category_scores"]
+
+    def test_index_has_heatmap_section(self, showcase: Path, tmp_path: Path) -> None:
+        """Heatmap section renders in index.html with the expected
+        bindings. The actual cell count is a runtime concern — we
+        string-match the Alpine template scaffold instead."""
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "heatmap-grid" in index
+        # Binds to the sort-aware row list, NOT the unsorted filter.
+        assert 'x-for="row in sortedFilteredRows"' in index
+        assert 'class="heatmap-cell"' in index
+
+    def test_scatter_js_uses_latency_not_completed_evals(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        """Regression guard: the scatter must plot latency_p50_ms on
+        the x-axis, not the useless completed_evals field from the
+        pre-chart-overhaul version."""
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "latency_p50_ms" in index
+        assert "median latency" in index
+        # The old `completed_evals` access MUST be gone from scatter JS.
+        # (The field itself is still referenced elsewhere in the table,
+        # so we only guard the scatter-specific x-axis label and the
+        # obsolete axis title.)
+        assert "evals completed" not in index
+
+    def test_leaderboard_json_exposes_new_fields(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        """`data/leaderboard.json` schema evolution: new fields are
+        additive. reval-webui (planned) relies on this shape."""
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        payload = json.loads((output / "data" / "leaderboard.json").read_text())
+        first = payload["rows"][0]
+        assert "latency_p50_ms" in first
+        assert "aggregated_rubric_scores" in first
+        # Default values in the fixture (no results[*].latency_ms)
+        assert first["latency_p50_ms"] is None
+        assert first["aggregated_rubric_scores"] == {}
+
+    def test_model_page_renders_criterion_bars_when_rubric_data_present(
+        self, tmp_path: Path
+    ) -> None:
+        """A showcase entry with `rubric_scores` on its figure_treatment
+        results produces a per-criterion bar canvas on the model page."""
+        showcase = tmp_path / "showcase"
+        data = _mock_result(
+            "gpt-4o",
+            "openai",
+            0.82,
+            {"figure_treatment": 0.80},
+        )
+        data["results"] = [
+            {
+                "category": "figure_treatment",
+                "latency_ms": 250,
+                "rubric_scores": {
+                    "factual_accuracy": 5,
+                    "tone_balance": 4,
+                    "context_fairness": 4,
+                    "source_attribution": 3,
+                },
+            },
+        ]
+        _write_showcase_entry(showcase, "gpt-4o_run", data)
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        page = (output / "models" / "gpt-4o_run.html").read_text()
+        assert 'id="criterionBars-figure_treatment"' in page
+        # Figure-A-only caveat must be visible to readers.
+        assert "Figure A" in page
+
+    def test_model_page_skips_criterion_bars_when_no_rubric_data(
+        self, tmp_path: Path
+    ) -> None:
+        """A showcase entry with no rubric_scores produces no bar
+        canvases. The whole section should be absent, not an empty
+        canvas."""
+        showcase = tmp_path / "showcase"
+        data = _mock_result(
+            "gpt-4o",
+            "openai",
+            0.82,
+            {"policy_attribution": 0.80},
+        )
+        data["results"] = [
+            {
+                "category": "policy_attribution",
+                "latency_ms": 250,
+                "similarity_score": 0.80,
+            },
+        ]
+        _write_showcase_entry(showcase, "no-rubric_run", data)
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        page = (output / "models" / "no-rubric_run.html").read_text()
+        # The JS helper string `drawCriterionBars('criterionBars-...')`
+        # is always in the <script> block — the canvas ELEMENT is what
+        # we gate on. Assert there is no `<canvas id="criterionBars-...">`.
+        assert '<canvas id="criterionBars-figure_treatment"' not in page
+        assert '<canvas id="criterionBars-issue_framing"' not in page
+        # And the enclosing "Rubric criteria" section is absent.
+        assert "Rubric criteria" not in page
 
     def test_output_is_idempotent(self, showcase: Path, tmp_path: Path) -> None:
         """Running build twice should produce the same output (regenerable)."""
