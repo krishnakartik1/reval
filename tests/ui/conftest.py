@@ -161,8 +161,14 @@ def page(page, request):  # type: ignore[override]
 
 
 @pytest.fixture
-def js_errors(request: pytest.FixtureRequest) -> dict[str, list[str]]:
-    """Shorthand for tests: assert js_errors['console'] == [] and js_errors['page'] == []."""
+def js_errors(page, request: pytest.FixtureRequest) -> dict[str, list[str]]:
+    """Shorthand for tests: assert js_errors['console'] == [] and js_errors['page'] == [].
+
+    Depends on `page` explicitly so that pytest guarantees the overridden `page`
+    fixture runs first and populates `request.node._ui_*` — otherwise a test that
+    asks for `js_errors` without also asking for `page` would hit AttributeError.
+    """
+    del page  # only here to enforce fixture ordering
     return {
         "console": request.node._ui_console_errors,
         "page": request.node._ui_page_errors,
