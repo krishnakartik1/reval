@@ -438,10 +438,24 @@
 
     var aggregatedRubric = rowData.aggregated_rubric_scores || {};
 
+    // Wrap each chart call in its own try/catch so a Chart.js failure
+    // on one canvas doesn't prevent the others from rendering. Same
+    // crash-safety pattern as index.html.j2's renderScatter() — a
+    // mid-init throw would otherwise leave the page half-drawn and
+    // surface as an uncaught exception the Playwright js_errors
+    // fixture catches.
     function drawAllCharts() {
-      drawRadar();
-      drawCriterionBars('criterionBars-figure_treatment', aggregatedRubric.figure_treatment);
-      drawCriterionBars('criterionBars-issue_framing',    aggregatedRubric.issue_framing);
+      try { drawRadar(); } catch (e) { console.warn('drawRadar failed:', e); }
+      try {
+        drawCriterionBars('criterionBars-figure_treatment', aggregatedRubric.figure_treatment);
+      } catch (e) {
+        console.warn('drawCriterionBars(figure_treatment) failed:', e);
+      }
+      try {
+        drawCriterionBars('criterionBars-issue_framing', aggregatedRubric.issue_framing);
+      } catch (e) {
+        console.warn('drawCriterionBars(issue_framing) failed:', e);
+      }
     }
 
     if (window.Chart) {

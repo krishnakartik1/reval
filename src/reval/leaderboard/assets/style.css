@@ -426,7 +426,13 @@ code, pre {
 
 .heatmap-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(var(--heatmap-cols, 5), minmax(76px, 1fr));
+  /* Row layout is `1 label + N category cells`. We don't know N at
+     CSS build time (it depends on the categories union in
+     data/leaderboard.json), so `auto-fit` lets the grid sit right
+     regardless of whether the showcase has 3, 5, or 7 categories. The
+     min-width keeps the cells from collapsing to ellipsis on narrow
+     viewports — the outer .heatmap-wrap handles horizontal scroll. */
+  grid-template-columns: minmax(220px, 1.4fr) repeat(auto-fit, minmax(76px, 1fr));
   gap: 4px;
   min-width: 560px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;

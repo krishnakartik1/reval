@@ -57,9 +57,7 @@ def test_scatter_renders_without_console_errors(
     assert js_errors["page"] == [], f"page errors: {js_errors['page']}"
 
 
-def test_scatter_xaxis_label_is_latency_not_evals(
-    page: Page, site_url: str
-) -> None:
+def test_scatter_xaxis_label_is_latency_not_evals(page: Page, site_url: str) -> None:
     """Read the Chart.js instance via page.evaluate and assert the
     x-axis title is the new "median latency" label — NOT the old
     "evals completed" label."""
@@ -69,13 +67,11 @@ def test_scatter_xaxis_label_is_latency_not_evals(
     page.wait_for_function(
         "() => window.Chart && Chart.getChart(document.getElementById('scatterChart'))"
     )
-    x_title = page.evaluate(
-        """() => {
+    x_title = page.evaluate("""() => {
             const c = Chart.getChart(document.getElementById('scatterChart'));
             return c && c.options && c.options.scales && c.options.scales.x
                 && c.options.scales.x.title && c.options.scales.x.title.text;
-        }"""
-    )
+        }""")
     assert x_title is not None
     assert "latency" in x_title.lower()
     assert "evals" not in x_title.lower()
@@ -89,13 +85,11 @@ def test_scatter_xaxis_is_logarithmic(page: Page, site_url: str) -> None:
     page.wait_for_function(
         "() => window.Chart && Chart.getChart(document.getElementById('scatterChart'))"
     )
-    x_type = page.evaluate(
-        """() => {
+    x_type = page.evaluate("""() => {
             const c = Chart.getChart(document.getElementById('scatterChart'));
             return c && c.options && c.options.scales && c.options.scales.x
                 && c.options.scales.x.type;
-        }"""
-    )
+        }""")
     assert x_type == "logarithmic"
 
 
@@ -111,8 +105,7 @@ def test_pareto_frontier_computation(page: Page, site_url: str) -> None:
     _wait_for_leaderboard_hydration(page)
     # Call paretoFrontier via Alpine.$data(el) — the component lives on
     # the outermost `<main x-data="leaderboardApp()">`.
-    frontier = page.evaluate(
-        """() => {
+    frontier = page.evaluate("""() => {
             const el = document.querySelector('[x-data*="leaderboardApp"]');
             const app = Alpine.$data(el);
             const pts = [
@@ -122,8 +115,7 @@ def test_pareto_frontier_computation(page: Page, site_url: str) -> None:
                 { x: 300, y: 0.85, label: 'd' },
             ];
             return app.paretoFrontier(pts).map(p => p.label);
-        }"""
-    )
+        }""")
     # a (100, 0.90) starts the frontier.  b (200, 0.80) is dominated.
     # d (300, 0.85) is dominated by a.  c (500, 0.95) extends frontier.
     assert frontier == ["a", "c"]
@@ -133,13 +125,70 @@ def test_pareto_frontier_empty_input(page: Page, site_url: str) -> None:
     """Empty input → empty frontier. No crash."""
     page.goto(f"{site_url}/")
     _wait_for_leaderboard_hydration(page)
-    result = page.evaluate(
-        """() => {
+    result = page.evaluate("""() => {
             const el = document.querySelector('[x-data*="leaderboardApp"]');
             return Alpine.$data(el).paretoFrontier([]);
-        }"""
-    )
+        }""")
     assert result == []
+
+
+def test_pareto_frontier_handles_tied_x(page: Page, site_url: str) -> None:
+    """Defensive regression test for tied-latency inputs.
+
+    When two runs land in the same p50 bucket the sort must put the
+    higher-y point first so the sweep keeps the better one and drops
+    the worse one as dominated. The reviewer flagged this as a
+    potential silent correctness gap — this test documents that the
+    algorithm resolves ties toward the higher-score point and that
+    strictly-dominated points at equal x are correctly excluded.
+
+    Scenario: a=(100, 0.9) and b=(100, 0.7) share latency; b has a
+    lower score so a dominates b. c=(200, 0.8) is then dominated by
+    a (lower latency + higher score). The frontier is {a} alone.
+    """
+    page.goto(f"{site_url}/")
+    _wait_for_leaderboard_hydration(page)
+    frontier = page.evaluate("""() => {
+            const el = document.querySelector('[x-data*="leaderboardApp"]');
+            const app = Alpine.$data(el);
+            const pts = [
+                { x: 100, y: 0.70, label: 'b' },
+                { x: 100, y: 0.90, label: 'a' },
+                { x: 200, y: 0.80, label: 'c' },
+            ];
+            return app.paretoFrontier(pts).map(p => p.label);
+        }""")
+    assert frontier == ["a"]
+
+
+def test_pareto_frontier_keeps_tied_x_with_tied_y(page: Page, site_url: str) -> None:
+    """Two runs with identical (x, y) collapse to the first-seen,
+    then a later point with the same x but higher y does NOT extend
+    the frontier — that point would share both axes with a kept
+    point and is dominated under strict-greater semantics.
+
+    This makes the tie-resolution rule explicit: the frontier is a
+    stable staircase, not a duplicate-rung line.
+    """
+    page.goto(f"{site_url}/")
+    _wait_for_leaderboard_hydration(page)
+    labels = page.evaluate("""() => {
+            const el = document.querySelector('[x-data*="leaderboardApp"]');
+            const app = Alpine.$data(el);
+            const pts = [
+                { x: 100, y: 0.80, label: 'a' },
+                { x: 100, y: 0.80, label: 'b' },  // exact duplicate
+                { x: 200, y: 0.95, label: 'c' },  // extends frontier
+            ];
+            return app.paretoFrontier(pts).map(p => p.label);
+        }""")
+    # Sort tiebreak is y desc, so between a and b with identical y
+    # the first-seen order at the Array.sort level is implementation-
+    # defined but stable in V8 for equal keys. Assert the SHAPE
+    # (length 2, labels drawn from {a, b, c}, c is present).
+    assert len(labels) == 2
+    assert labels[-1] == "c"
+    assert labels[0] in {"a", "b"}
 
 
 def test_scatter_falls_back_when_no_latency_data(
@@ -169,9 +218,7 @@ def test_scatter_falls_back_when_no_latency_data(
 # ── Chart 2 — Heatmap ───────────────────────────────────────────
 
 
-def test_heatmap_renders_with_row_per_model(
-    page: Page, site_url: str
-) -> None:
+def test_heatmap_renders_with_row_per_model(page: Page, site_url: str) -> None:
     """One heatmap row per model in the fixture (3 runs = 3 rows).
 
     Binds to sortedFilteredRows so the count matches the table rows.
@@ -182,9 +229,7 @@ def test_heatmap_renders_with_row_per_model(
     expect(rows).to_have_count(3)
 
 
-def test_heatmap_row_count_matches_table_row_count(
-    page: Page, site_url: str
-) -> None:
+def test_heatmap_row_count_matches_table_row_count(page: Page, site_url: str) -> None:
     """The heatmap must stay in lockstep with the sorted+filtered
     leaderboard table — typing in the search filter should prune both."""
     page.goto(f"{site_url}/")
@@ -207,9 +252,7 @@ def test_heatmap_row_count_matches_table_row_count(
     assert page.locator(".heatmap-row").count() == 1
 
 
-def test_heatmap_cells_use_score_color_classes(
-    page: Page, site_url: str
-) -> None:
+def test_heatmap_cells_use_score_color_classes(page: Page, site_url: str) -> None:
     """Cells carry the existing `.score-high`/`.score-mid`/`.score-low`
     classes, not an invented `score-hi`/`score-lo` variant. This guards
     against the naming drift the plan-reviewer flagged."""

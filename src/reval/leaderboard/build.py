@@ -237,6 +237,14 @@ def _aggregate_rubric_scores(
     Categories with zero valid scores are absent from the return value
     (not empty-dict), so the frontend can use
     `cat in aggregated_rubric_scores` as its "has data" predicate.
+
+    Known limitation: the `figure_treatment` rubric_scores dict stored
+    on a paired result reflects ONLY side A's response (see
+    `reval.runner.EvalRunner._run_figure_treatment` at runner.py:228,
+    which forwards `rubric_scores=result_a.rubric_scores` on the merged
+    result). The aggregate therefore measures "how the model treats
+    Figure A across paired prompts", not a balanced Figure-A/Figure-B
+    mean. Fixing the runner to emit a merged rubric is a v2 follow-up.
     """
     buckets: dict[str, dict[str, list[float]]] = {}
     for r in results:
@@ -248,7 +256,12 @@ def _aggregate_rubric_scores(
             continue
         bucket = buckets.setdefault(category, {})
         for criterion, raw in rubric_scores.items():
-            if not isinstance(raw, int | float) or isinstance(raw, bool):
+            # bool is a subclass of int in Python — check it first so a
+            # judge that accidentally returns True/False doesn't sneak
+            # through the numeric arm as 1.0 / 0.0.
+            if isinstance(raw, bool):
+                continue
+            if not isinstance(raw, int | float):
                 continue
             raw_f = float(raw)
             if not (1.0 <= raw_f <= 5.0):
