@@ -163,12 +163,16 @@ def test_pareto_frontier_handles_tied_x(page: Page, site_url: str) -> None:
 
 def test_pareto_frontier_keeps_tied_x_with_tied_y(page: Page, site_url: str) -> None:
     """Two runs with identical (x, y) collapse to the first-seen,
-    then a later point with the same x but higher y does NOT extend
-    the frontier — that point would share both axes with a kept
-    point and is dominated under strict-greater semantics.
+    then a later point with a higher x and higher y DOES extend
+    the frontier — the duplicate has the same x but no higher y
+    than the first-seen, so it's dropped under strict-greater
+    semantics; the later point then passes the strict-greater
+    check and gets kept.
 
-    This makes the tie-resolution rule explicit: the frontier is a
-    stable staircase, not a duplicate-rung line.
+    This makes the tie-resolution rule explicit: the frontier is
+    a stable staircase, not a duplicate-rung line. V8's sort is
+    guaranteed stable since ES2019, so `a` (first in the input)
+    comes out first in the sorted order between equal keys.
     """
     page.goto(f"{site_url}/")
     _wait_for_leaderboard_hydration(page)
@@ -182,13 +186,7 @@ def test_pareto_frontier_keeps_tied_x_with_tied_y(page: Page, site_url: str) -> 
             ];
             return app.paretoFrontier(pts).map(p => p.label);
         }""")
-    # Sort tiebreak is y desc, so between a and b with identical y
-    # the first-seen order at the Array.sort level is implementation-
-    # defined but stable in V8 for equal keys. Assert the SHAPE
-    # (length 2, labels drawn from {a, b, c}, c is present).
-    assert len(labels) == 2
-    assert labels[-1] == "c"
-    assert labels[0] in {"a", "b"}
+    assert labels == ["a", "c"]
 
 
 def test_scatter_falls_back_when_no_latency_data(

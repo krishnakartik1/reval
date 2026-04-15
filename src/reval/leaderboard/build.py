@@ -239,12 +239,14 @@ def _aggregate_rubric_scores(
     `cat in aggregated_rubric_scores` as its "has data" predicate.
 
     Known limitation: the `figure_treatment` rubric_scores dict stored
-    on a paired result reflects ONLY side A's response (see
-    `reval.runner.EvalRunner._run_figure_treatment` at runner.py:228,
-    which forwards `rubric_scores=result_a.rubric_scores` on the merged
-    result). The aggregate therefore measures "how the model treats
-    Figure A across paired prompts", not a balanced Figure-A/Figure-B
-    mean. Fixing the runner to emit a merged rubric is a v2 follow-up.
+    on a paired result reflects ONLY side A's response. See
+    `reval.runner.EvalRunner._run_figure_treatment`, which currently
+    constructs the merged result with
+    `rubric_scores=result_a.rubric_scores` — grep for that assignment
+    if you need to find the exact line in a future refactor. The
+    aggregate therefore measures "how the model treats Figure A
+    across paired prompts", not a balanced Figure-A/Figure-B mean.
+    Fixing the runner to emit a merged rubric is a v2 follow-up.
     """
     buckets: dict[str, dict[str, list[float]]] = {}
     for r in results:

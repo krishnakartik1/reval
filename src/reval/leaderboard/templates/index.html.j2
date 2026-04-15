@@ -663,8 +663,11 @@
         } catch (err) {
           // Swallow Chart.js init errors so Alpine's init() chain
           // (and therefore the heatmap, which also binds to this
-          // component) continues to mount. See plan § "Crash safety".
-          console.warn('renderScatter failed:', err);
+          // component) continues to mount. Emit at `error` severity
+          // so the Playwright `js_errors` fixture catches a silent
+          // degradation in CI — without `error`, a broken scatter
+          // renders blank and no test notices.
+          console.error('renderScatter failed:', err);
         }
       }
     };

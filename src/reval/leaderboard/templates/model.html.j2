@@ -440,21 +440,31 @@
 
     // Wrap each chart call in its own try/catch so a Chart.js failure
     // on one canvas doesn't prevent the others from rendering. Same
-    // crash-safety pattern as index.html.j2's renderScatter() — a
-    // mid-init throw would otherwise leave the page half-drawn and
-    // surface as an uncaught exception the Playwright js_errors
-    // fixture catches.
+    // crash-safety pattern as index.html.j2's renderScatter(). Emit
+    // at `error` severity so the Playwright `js_errors` fixture
+    // catches a silent degradation in CI — `console.warn` would
+    // render a blank canvas and leave the test suite green.
     function drawAllCharts() {
-      try { drawRadar(); } catch (e) { console.warn('drawRadar failed:', e); }
       try {
-        drawCriterionBars('criterionBars-figure_treatment', aggregatedRubric.figure_treatment);
+        drawRadar();
       } catch (e) {
-        console.warn('drawCriterionBars(figure_treatment) failed:', e);
+        console.error('drawRadar failed:', e);
       }
       try {
-        drawCriterionBars('criterionBars-issue_framing', aggregatedRubric.issue_framing);
+        drawCriterionBars(
+          'criterionBars-figure_treatment',
+          aggregatedRubric.figure_treatment,
+        );
       } catch (e) {
-        console.warn('drawCriterionBars(issue_framing) failed:', e);
+        console.error('drawCriterionBars(figure_treatment) failed:', e);
+      }
+      try {
+        drawCriterionBars(
+          'criterionBars-issue_framing',
+          aggregatedRubric.issue_framing,
+        );
+      } catch (e) {
+        console.error('drawCriterionBars(issue_framing) failed:', e);
       }
     }
 
