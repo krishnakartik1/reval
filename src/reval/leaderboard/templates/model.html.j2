@@ -1,6 +1,12 @@
 {% extends "base.html.j2" %}
+{% set active_tab = 'leaderboard' %}
 {% set index_href = "../index.html" %}
 {% set asset_root = "../assets" %}
+{# Depth-1 page (public/models/<slug>.html): the Docs tab link must
+   climb back to the siblings-of-index `docs/` subtree. Without this
+   override, `docs_href|default('docs/index.html')` resolves to
+   `public/models/docs/index.html` and 404s. #}
+{% set docs_href = "../docs/index.html" %}
 {% block title %}{{ row.model_id }} · REVAL{% endblock %}
 
 {% block content %}

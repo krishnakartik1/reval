@@ -228,6 +228,7 @@ def build(
     output_dir: Path,
     include_reports: bool = True,
     dataset_dir: Path | None = None,
+    docs_dir: Path | None = None,
 ) -> BuildReport:
     """Render the static leaderboard site.
 
@@ -249,6 +250,15 @@ def build(
             model). When None, `public/reports/<slug>.html` is a
             verbatim copy of `showcase/<slug>/report.html` (old
             behavior, kept as a fallback when no dataset is available).
+        docs_dir: Optional path to the `docs/` directory containing
+            markdown source for the Docs tab. When provided and the
+            directory exists, `render_docs()` emits `public/docs/` as
+            a sibling of `public/index.html`. When None or missing,
+            the Docs nav tab in `base.html.j2` still renders (its
+            target is the default `docs/index.html` path) but nothing
+            is written under `public/docs/`. The docs build runs
+            AFTER the asset-copy loop so `pygments.css`, which
+            `render_docs` writes into `output_dir/assets/`, survives.
     """
     build_report = BuildReport()
 
@@ -402,6 +412,19 @@ def build(
 
             if src_report.exists():
                 shutil.copy2(src_report, dest)
+
+    # Docs tab — runs LAST so `pygments.css`, written into
+    # `output_dir/assets/` by `render_docs`, survives the asset-copy
+    # loop above. `load_docs` is a no-op on a missing or empty
+    # directory; `render_docs` short-circuits on an empty section list.
+    if docs_dir is not None and docs_dir.exists():
+        # Lazy import — keeps `markdown-it-py` / `mdit-py-plugins` /
+        # `pygments` off the hot path for `reval leaderboard build`
+        # users who don't install the `[docs]` optional extra.
+        from reval.leaderboard.docs import load_docs, render_docs
+
+        docs_sections = load_docs(docs_dir)
+        render_docs(env, docs_sections, output_dir)
 
     return build_report
 

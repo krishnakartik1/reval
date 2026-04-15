@@ -109,10 +109,11 @@ Playwright + pytest-playwright suite that renders the static leaderboard and the
 
 **When you must run it.** Any PR that edits one of:
 
-- `src/reval/leaderboard/templates/*.html.j2` — the leaderboard Jinja templates.
+- `src/reval/leaderboard/templates/*.html.j2` — the leaderboard Jinja templates (including `docs_base.html.j2`, `docs_index.html.j2`, `docs_page.html.j2`).
 - `src/reval/leaderboard/assets/*.js` — `radar.js` or any other client-side script.
-- `src/reval/leaderboard/assets/*.css` and the Alpine.js component in `index.html.j2`.
+- `src/reval/leaderboard/assets/*.css` and the Alpine.js component in `index.html.j2`. This also covers `docs.css` and the generated `pygments.css` consumed by the Docs tab.
 - `src/reval/leaderboard/build.py` — the build function that wires rows + categories into the templates.
+- `src/reval/leaderboard/docs.py` — the Docs tab renderer (`load_docs`, `render_docs`, markdown-it-py + Pygments pipeline, copy-button wrapper).
 - `src/reval/report.py` — the per-run `generate_html_report` string builder and its `_CATEGORY_ICONS` map.
 - `src/reval/contracts/models.py` — `BenchmarkRun`, `EvalCategory`, `EvalResult`, `RunManifestMixin`, or any field the fixture depends on.
 

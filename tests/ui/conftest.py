@@ -110,12 +110,36 @@ def multi_judge_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def built_site_dir(
     multi_judge_showcase: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    """Run the real leaderboard build against the synthetic showcase."""
+    """Run the real leaderboard build against the synthetic showcase.
+
+    This fixture ALSO points `docs_dir` at the repo's real `reval/docs/`
+    tree, so the Docs tab is built against production content. That
+    gives the Playwright suite end-to-end coverage of:
+
+      - the tab bar added to `base.html.j2`
+      - the docs index and per-page templates at depth 1 / 2
+      - the Alpine sidebar filter hydration
+      - the copy-to-clipboard button on fenced code blocks
+      - Lucide icon rendering in the docs tab card grid
+      - relative path resolution across `index.html` ↔ `docs/...` ↔
+        `models/<slug>.html`
+
+    Passing the repo's actual docs tree rather than a tiny synthetic
+    fixture keeps the UI suite honest — the content drifts, the tests
+    see the drift. On a wheel install (CI rebuild scenarios) the path
+    still resolves because `tests/ui/conftest.py` runs from the repo
+    checkout, not from the installed package.
+    """
     output = tmp_path_factory.mktemp("public")
+    # Resolve the repo root by walking up from this conftest:
+    # tests/ui/conftest.py → tests/ui → tests → <repo root>
+    repo_root = UI_TEST_DIR.parent.parent
+    docs_dir = repo_root / "docs"
     build(
         showcase_dir=multi_judge_showcase,
         output_dir=output,
         include_reports=False,
+        docs_dir=docs_dir if docs_dir.exists() else None,
     )
     return output
 

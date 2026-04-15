@@ -97,6 +97,15 @@
       </h1>
 
       <nav class="flex items-center gap-5">
+        <a
+          href="{{ index_href|default('index.html') }}"
+          class="docs-tab{% if active_tab|default('leaderboard') == 'leaderboard' %} is-active{% endif %}"
+        >Leaderboard</a>
+        <a
+          href="{{ docs_href|default('docs/index.html') }}"
+          class="docs-tab{% if active_tab|default('leaderboard') == 'docs' %} is-active{% endif %}"
+        >Docs</a>
+        <span class="nav-divider" aria-hidden="true"></span>
         <a href="https://github.com/krishnakartik1/reval"
            class="text-[11px] font-medium uppercase tracking-[0.14em] hover:opacity-80 transition-opacity"
            style="color: var(--fg-dim);">
