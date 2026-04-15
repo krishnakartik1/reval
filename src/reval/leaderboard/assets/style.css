@@ -89,6 +89,46 @@ code, pre {
   display: none;
 }
 
+/* ── Primary nav tab bar (Leaderboard / Docs) ──────────────── */
+
+.docs-tab {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 6px 2px;
+  position: relative;
+  transition:
+    color var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+.docs-tab:hover {
+  color: var(--fg);
+  opacity: 1;
+}
+.docs-tab.is-active {
+  color: var(--fg);
+}
+.docs-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.nav-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
 .site-footer {
   border-top: 1px solid var(--border);
   color: var(--fg-dim);

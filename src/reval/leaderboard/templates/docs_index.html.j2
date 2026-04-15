@@ -1,0 +1,67 @@
+{% extends "docs_base.html.j2" %}
+{# Landing page — Pinecone-style card grid. Hides the right-hand TOC
+   column by overriding `{% block docs_toc %}` with an empty block, and
+   swaps in a wider layout class so the article column fills the space. #}
+{% set docs_layout_class = 'docs-layout docs-layout--no-toc' %}
+
+{% block article %}
+  <header class="docs-landing-hero">
+    <h1 class="display-md">Docs</h1>
+    <p class="docs-landing-lede">
+      Everything you need to run REVAL locally, understand the rubrics
+      and metrics, and read the roadmap.
+    </p>
+  </header>
+
+  <section class="docs-card-grid" aria-label="Documentation sections">
+    <a class="docs-card" href="getting-started/install.html">
+      <i data-lucide="rocket" class="docs-card-icon"></i>
+      <h3 class="docs-card-title">Get started locally</h3>
+      <p class="docs-card-desc">Clone, install, configure .env, run your first eval.</p>
+    </a>
+
+    <a class="docs-card" href="getting-started/first-eval.html">
+      <i data-lucide="play" class="docs-card-icon"></i>
+      <h3 class="docs-card-title">Run your first eval</h3>
+      <p class="docs-card-desc">Command-line walkthrough with real model flags and outputs.</p>
+    </a>
+
+    <a class="docs-card" href="concepts/methodology.html">
+      <i data-lucide="compass" class="docs-card-icon"></i>
+      <h3 class="docs-card-title">Methodology</h3>
+      <p class="docs-card-desc">What REVAL measures, why it matters, and what it deliberately does not measure.</p>
+    </a>
+
+    <a class="docs-card" href="concepts/rubrics.html">
+      <i data-lucide="ruler" class="docs-card-icon"></i>
+      <h3 class="docs-card-title">Rubrics &amp; metrics</h3>
+      <p class="docs-card-desc">Figure treatment, issue framing, scoring formulas, and the 0.85 similarity threshold.</p>
+    </a>
+
+    <a class="docs-card" href="concepts/test-cases.html">
+      <i data-lucide="database" class="docs-card-icon"></i>
+      <h3 class="docs-card-title">Test cases</h3>
+      <p class="docs-card-desc">54 entries across US and India, five categories, and the schema that enforces them.</p>
+    </a>
+
+    <a class="docs-card" href="reference/providers.html">
+      <i data-lucide="plug" class="docs-card-icon"></i>
+      <h3 class="docs-card-title">Providers &amp; models</h3>
+      <p class="docs-card-desc">Bedrock, Anthropic, OpenAI, MiniMax, Ollama — and how to register a new model.</p>
+    </a>
+  </section>
+
+  <section class="docs-whats-next">
+    <p class="eyebrow">What's next</p>
+    <a href="roadmap/upcoming.html" class="docs-whats-next-link">
+      Roadmap &amp; upcoming features
+      <i data-lucide="arrow-right" class="w-4 h-4 inline-block align-middle"></i>
+    </a>
+  </section>
+{% endblock %}
+
+{# Hide the right-hand TOC column on the landing page by overriding
+   the block with empty content. The grid column still exists
+   structurally; `docs_layout_class = '... --no-toc'` collapses it
+   via CSS grid-template-columns. #}
+{% block docs_toc %}{% endblock %}

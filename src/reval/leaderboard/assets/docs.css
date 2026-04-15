@@ -1,0 +1,487 @@
+/* REVAL — Docs tab styles.
+ *
+ * Scoped to the Docs tab only (selectors prefixed with .docs-*). The
+ * base site-header, tab bar, grain overlay, and footer live in
+ * style.css and are shared with the leaderboard pages.
+ *
+ * Layout, typography, and prose styling for:
+ *   - 3-column layout (sidebar / article / TOC) at ≥ lg
+ *   - 2-column at md (TOC hidden)
+ *   - 1-column at sm (sidebar collapses into a <details>)
+ *   - Prose rules for h1-h4, p, a, code, pre, blockquote, tables, lists
+ *   - Sidebar full site index, current-page highlight, search input
+ *   - Right-hand "on this page" TOC with h2/h3 levels
+ *   - Pinecone-style card grid for the landing page
+ *   - Fenced code blocks with a copy-to-clipboard button
+ *
+ * `pygments.css` is generated at build time and loaded separately
+ * via <link> in docs_base.html.j2.
+ */
+
+/* ── 3-col layout ─────────────────────────────────────────── */
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 200px;
+  gap: 48px;
+  align-items: start;
+}
+.docs-layout--no-toc {
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 64px;
+}
+
+@media (max-width: 1024px) {
+  .docs-layout,
+  .docs-layout--no-toc {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 32px;
+  }
+  .docs-toc {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .docs-layout,
+  .docs-layout--no-toc {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .docs-sidebar {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
+}
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+
+.docs-sidebar {
+  position: sticky;
+  top: calc(var(--header-h, 64px) + 24px);
+  max-height: calc(100vh - var(--header-h, 64px) - 48px);
+  overflow-y: auto;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-soft);
+}
+
+.docs-sidebar-search {
+  position: relative;
+  margin-bottom: 20px;
+}
+.docs-sidebar-search input {
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--dur) var(--ease);
+}
+.docs-sidebar-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.docs-sidebar-search input::placeholder {
+  color: var(--fg-dim);
+}
+
+.docs-sidebar-nav {
+  font-family: var(--font-body);
+}
+.docs-sidebar-section {
+  margin-bottom: 24px;
+}
+.docs-sidebar-section-title {
+  margin: 0 0 8px 0;
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+.docs-sidebar-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-left: 1px solid var(--border-soft);
+}
+.docs-sidebar-section li {
+  margin: 0;
+}
+.docs-sidebar-link {
+  display: block;
+  padding: 6px 0 6px 12px;
+  margin-left: -1px;
+  font-size: 13px;
+  color: var(--fg-dim);
+  border-left: 2px solid transparent;
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.docs-sidebar-link:hover {
+  color: var(--fg);
+}
+.docs-sidebar-link.is-active {
+  color: var(--accent);
+  font-weight: 500;
+  border-left-color: var(--accent);
+}
+
+/* ── Article area ─────────────────────────────────────────── */
+
+.docs-article {
+  min-width: 0;
+  max-width: 780px;
+}
+
+.docs-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.docs-breadcrumb a {
+  color: var(--fg-dim);
+  transition: color var(--dur) var(--ease);
+}
+.docs-breadcrumb a:hover {
+  color: var(--accent);
+}
+.docs-breadcrumb .is-current {
+  color: var(--fg);
+}
+
+.docs-article-title {
+  margin: 0 0 8px 0;
+  color: var(--fg);
+}
+.docs-article-lede {
+  margin: 0 0 32px 0;
+  font-size: 16px;
+  color: var(--fg-dim);
+  line-height: 1.55;
+}
+
+.docs-article-footer {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
+}
+.docs-article-footer a {
+  color: var(--accent);
+  transition: color var(--dur) var(--ease);
+}
+.docs-article-footer a:hover {
+  color: var(--accent-2);
+}
+
+/* ── Prose ────────────────────────────────────────────────── */
+
+.docs-prose {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fg);
+}
+
+.docs-prose h2 {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 60, "wght" 500, "SOFT" 20;
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  margin: 48px 0 16px 0;
+  padding-top: 8px;
+  color: var(--fg);
+}
+.docs-prose h3 {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "wght" 500, "SOFT" 12;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  margin: 32px 0 12px 0;
+  color: var(--fg);
+}
+.docs-prose h4 {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 24px 0 8px 0;
+  color: var(--fg);
+  letter-spacing: 0;
+}
+
+.docs-prose p {
+  margin: 0 0 16px 0;
+}
+
+.docs-prose a {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-tint);
+  transition: border-color var(--dur) var(--ease);
+}
+.docs-prose a:hover {
+  border-bottom-color: var(--accent);
+}
+
+.docs-prose ul,
+.docs-prose ol {
+  padding-left: 24px;
+  margin: 0 0 16px 0;
+}
+.docs-prose li {
+  margin: 0 0 6px 0;
+}
+.docs-prose li::marker {
+  color: var(--fg-dim);
+}
+
+.docs-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 1px 5px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.docs-prose blockquote {
+  margin: 24px 0;
+  padding: 12px 20px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-alt);
+  color: var(--fg-dim);
+  font-style: italic;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.docs-prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.docs-prose hr {
+  margin: 48px 0;
+  border: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border) 0%, transparent 100%);
+}
+
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 24px 0;
+  font-size: 13px;
+}
+.docs-prose th,
+.docs-prose td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.docs-prose th {
+  font-weight: 600;
+  color: var(--fg-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom-color: var(--border);
+}
+
+/* ── Fenced code blocks + copy button ────────────────────── */
+
+.code-wrap {
+  position: relative;
+  margin: 24px 0;
+}
+.code-wrap pre {
+  margin: 0;
+  padding: 20px 24px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+.code-wrap pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+.code-wrap .code-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  height: 28px;
+  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.code-wrap:hover .code-copy,
+.code-wrap .code-copy:focus-visible {
+  opacity: 1;
+}
+.code-wrap .code-copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Right-hand "on this page" TOC ───────────────────────── */
+
+.docs-toc {
+  position: sticky;
+  top: calc(var(--header-h, 64px) + 24px);
+  max-height: calc(100vh - var(--header-h, 64px) - 48px);
+  overflow-y: auto;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.docs-toc-heading {
+  margin: 0 0 12px 0;
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+.docs-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-left: 1px solid var(--border-soft);
+}
+.docs-toc-item {
+  padding: 5px 0 5px 12px;
+  line-height: 1.4;
+}
+.docs-toc-item a {
+  color: var(--fg-dim);
+  transition: color var(--dur) var(--ease);
+}
+.docs-toc-item a:hover {
+  color: var(--accent);
+}
+.docs-toc-level-3 {
+  padding-left: 24px;
+  font-size: 11px;
+}
+
+/* ── Docs landing page ───────────────────────────────────── */
+
+.docs-landing-hero {
+  margin-bottom: 48px;
+}
+.docs-landing-hero .display-md {
+  margin: 0 0 12px 0;
+  color: var(--fg);
+}
+.docs-landing-lede {
+  margin: 0;
+  font-size: 17px;
+  color: var(--fg-dim);
+  line-height: 1.55;
+  max-width: 640px;
+}
+
+.docs-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 0 0 64px 0;
+}
+@media (max-width: 720px) {
+  .docs-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.docs-card {
+  display: block;
+  padding: 24px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.docs-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+.docs-card-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.docs-card-title {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "wght" 500, "SOFT" 12;
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 6px 0;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+}
+.docs-card-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+.docs-whats-next {
+  padding-top: 32px;
+  border-top: 1px solid var(--border-soft);
+}
+.docs-whats-next .eyebrow {
+  margin: 0 0 8px 0;
+}
+.docs-whats-next-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg);
+  transition: color var(--dur) var(--ease);
+}
+.docs-whats-next-link:hover {
+  color: var(--accent);
+}
+
+/* ── Dark-mode tweaks ────────────────────────────────────── */
+
+:root[data-theme="dark"] .docs-prose code {
+  color: var(--accent-2);
+}
+:root[data-theme="dark"] .docs-prose blockquote {
+  background: var(--bg-alt);
+}

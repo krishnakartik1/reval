@@ -19,8 +19,7 @@ FORBIDDEN = ["aioboto3", "boto3", "numpy", "jsonlines", "httpx", "anthropic", "o
 
 
 def test_contracts_has_no_forbidden_transitive_imports() -> None:
-    program = textwrap.dedent(
-        f"""
+    program = textwrap.dedent(f"""
         import sys
         import reval.contracts  # noqa: F401
         forbidden = {FORBIDDEN!r}
@@ -29,8 +28,7 @@ def test_contracts_has_no_forbidden_transitive_imports() -> None:
             print("LOADED:" + ",".join(loaded))
             sys.exit(1)
         sys.exit(0)
-        """
-    )
+        """)
     result = subprocess.run(
         [sys.executable, "-c", program],
         capture_output=True,

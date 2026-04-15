@@ -27,6 +27,12 @@ _DEFAULT_RUBRICS = _REPO_ROOT / "evals" / "rubrics"
 _DEFAULT_CONFIG = _REPO_ROOT / "evals" / "config.yaml"
 _DEFAULT_SHOWCASE = _REPO_ROOT / "showcase"
 _DEFAULT_LEADERBOARD_OUTPUT = _REPO_ROOT / "public"
+# NOT _REPO_ROOT / "reval" / "docs" — `_REPO_ROOT` is already the reval
+# repo root (see comment above), so `reval/docs/` in the workspace layout
+# is just `docs/` from the repo's point of view. On wheel installs this
+# path lives under `site-packages/` and won't exist; the CLI degrades
+# to `docs_dir=None` via the `docs.exists()` fallback below.
+_DEFAULT_DOCS = _REPO_ROOT / "docs"
 
 app = typer.Typer(
     name="reval",
@@ -379,6 +385,19 @@ def leaderboard_build(
             "showcase/<slug>/report.html verbatim."
         ),
     ),
+    docs: Path = typer.Option(
+        _DEFAULT_DOCS,
+        "--docs",
+        help=(
+            "Path to the docs/ directory containing markdown source for the "
+            "Docs tab. Pass a non-existent path to skip the docs build "
+            "entirely; the rest of the site still builds and the Docs nav "
+            "tab still appears (its default target just 404s until docs "
+            "are present). NOTE: do not add a sibling `--docs/--no-docs` "
+            "bool toggle — typer/click rejects two options sharing a long "
+            "name, which would make `--docs <path>` unreachable."
+        ),
+    ),
 ) -> None:
     """Render the static leaderboard site from `showcase/*/results.json`.
 
@@ -413,11 +432,27 @@ def leaderboard_build(
         else:
             console.print(f"[cyan]Regenerating reports against {dataset_dir}...[/cyan]")
 
+    # Docs tab — mirrors the `--dataset` fallback pattern above.
+    # Passing a non-existent path silently skips the docs build; the
+    # rest of the site still builds. On wheel installs `reval/docs/`
+    # is not bundled, so the default path will miss and the CLI
+    # degrades cleanly.
+    docs_dir = docs if docs.exists() else None
+    if docs_dir is None:
+        console.print(
+            f"[yellow]Docs source not found at {docs} — Docs tab pages will "
+            "be skipped. Install reval in editable mode (`pip install -e .`) "
+            "from the repo root to build docs locally.[/yellow]"
+        )
+    else:
+        console.print(f"[cyan]Rendering docs from {docs_dir}...[/cyan]")
+
     report = build(
         showcase_dir=showcase,
         output_dir=output,
         include_reports=include_reports,
         dataset_dir=dataset_dir,
+        docs_dir=docs_dir,
     )
 
     if report.partial_matches:

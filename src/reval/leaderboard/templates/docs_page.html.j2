@@ -1,0 +1,25 @@
+{% extends "docs_base.html.j2" %}
+{# Single docs page — renders the pre-rendered markdown HTML from
+   `current_page.html`. Inherits the default `{% block docs_toc %}`
+   from `docs_base.html.j2` so the right-hand "on this page" column
+   is populated from `current_page.toc`. #}
+
+{% block article %}
+  <h1 class="docs-article-title display-sm">{{ current_page.title }}</h1>
+  {% if current_page.description %}
+    <p class="docs-article-lede">{{ current_page.description }}</p>
+  {% endif %}
+
+  <div class="docs-prose">
+    {{ current_page.html | safe }}
+  </div>
+
+  <footer class="docs-article-footer">
+    <p class="eyebrow">
+      Source:
+      <a href="https://github.com/krishnakartik1/reval/blob/master/docs/{{ current_page.section_slug }}/{{ current_page.slug }}.md">
+        docs/{{ current_page.section_slug }}/{{ current_page.slug }}.md
+      </a>
+    </p>
+  </footer>
+{% endblock %}

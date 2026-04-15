@@ -568,3 +568,168 @@ class TestBuild:
         assert report.unmatched_missing == []
         # Old showcase report still copied as the fallback
         assert (output / "reports" / f"{entry_slug}.html").exists()
+
+
+class TestNavTabBar:
+    """Regression guards for the new Leaderboard / Docs tab bar in
+    `base.html.j2`.
+
+    Covers:
+      - `public/index.html` contains both tab links with the
+        leaderboard tab highlighted.
+      - `public/models/<slug>.html` contains both tab links with
+        the `docs_href` correctly climbing up to `../docs/index.html`
+        (the depth-1 override in `model.html.j2`).
+
+    These are the blocker-2 regression guards — without them, a
+    future refactor that drops the `{% set docs_href = ... %}` line
+    from `model.html.j2` would silently produce 404 links to
+    `public/models/docs/index.html` on every per-model page.
+    """
+
+    def test_index_html_has_tab_bar_with_leaderboard_active(
+        self, tmp_path: Path
+    ) -> None:
+        showcase_dir = tmp_path / "showcase"
+        showcase_dir.mkdir()
+        _write_showcase_entry(
+            showcase_dir,
+            "claude-sonnet-run-1",
+            _mock_result(
+                "claude-sonnet-4",
+                "anthropic",
+                0.82,
+                {"issue_framing": 0.85, "figure_treatment": 0.78},
+            ),
+        )
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=False,
+        )
+
+        index_html = (output / "index.html").read_text()
+        # Both tab links present
+        assert ">Leaderboard<" in index_html
+        assert ">Docs<" in index_html
+        # Depth-0: Docs tab points at `docs/index.html` (no `../`)
+        assert 'href="docs/index.html"' in index_html
+        # Leaderboard tab is highlighted, Docs tab is not
+        assert 'class="docs-tab is-active"' in index_html
+        # Make sure the Leaderboard tab is the highlighted one —
+        # it's the element that immediately precedes the Docs tab
+        # in the rendered nav (per base.html.j2 order).
+        pre = index_html.split(">Docs<")[0]
+        assert pre.count("docs-tab is-active") >= 1
+
+    def test_model_page_has_depth_aware_docs_href(self, tmp_path: Path) -> None:
+        """THIS IS THE BLOCKER-2 GUARD.
+
+        `model.html.j2` sets `docs_href = "../docs/index.html"`
+        because depth 1 (`public/models/<slug>.html`) needs to
+        climb up to `public/docs/`. Without the override,
+        `docs_href|default('docs/index.html')` resolves to
+        `public/models/docs/index.html` and 404s.
+        """
+        showcase_dir = tmp_path / "showcase"
+        showcase_dir.mkdir()
+        _write_showcase_entry(
+            showcase_dir,
+            "claude-sonnet-run-1",
+            _mock_result(
+                "claude-sonnet-4",
+                "anthropic",
+                0.82,
+                {"issue_framing": 0.85, "figure_treatment": 0.78},
+            ),
+        )
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=False,
+        )
+
+        model_html = (output / "models" / "claude-sonnet-run-1.html").read_text()
+        # Both tabs present
+        assert ">Leaderboard<" in model_html
+        assert ">Docs<" in model_html
+        # Depth-1 Docs tab MUST climb one level up
+        assert 'href="../docs/index.html"' in model_html
+        # The flat `docs/index.html` form MUST NOT appear (would 404)
+        assert 'href="docs/index.html"' not in model_html
+
+
+class TestDocsBuildIntegration:
+    """Guard the `docs_dir` kwarg added to `build()` for the Docs tab.
+
+    These tests exercise the library-level API; the CLI-level `--docs`
+    flag is covered by `test_cli.py`. A passing suite does NOT imply
+    docs render correctly — only that the signature change is
+    backward-compatible and the short-circuit on None works.
+    """
+
+    def test_build_docs_disabled_when_none(self, tmp_path: Path) -> None:
+        """`build(..., docs_dir=None)` must emit the leaderboard but
+        no `docs/` subtree — the Docs tab pages are entirely opt-in.
+
+        Regression guard for the `docs_dir` kwarg: if a future refactor
+        accidentally makes the docs build unconditional, this test
+        fails because `public/docs/` shows up uninvited.
+        """
+        showcase_dir = tmp_path / "showcase"
+        showcase_dir.mkdir()
+        _write_showcase_entry(
+            showcase_dir,
+            "claude-sonnet-run-1",
+            _mock_result(
+                "claude-sonnet-4",
+                "anthropic",
+                0.82,
+                {"issue_framing": 0.85, "figure_treatment": 0.78},
+            ),
+        )
+
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=False,
+            docs_dir=None,
+        )
+
+        assert (output / "index.html").exists()
+        assert not (output / "docs").exists()
+
+    def test_build_docs_disabled_when_missing_dir(self, tmp_path: Path) -> None:
+        """A non-existent `docs_dir` path is equivalent to `None`.
+
+        This is the wheel-install fallback path exercised end-to-end:
+        on a wheel install, `_REPO_ROOT / "docs"` doesn't exist because
+        the authoring source is not bundled. `build()` must treat the
+        missing directory as "skip docs", not crash.
+        """
+        showcase_dir = tmp_path / "showcase"
+        showcase_dir.mkdir()
+        _write_showcase_entry(
+            showcase_dir,
+            "claude-sonnet-run-1",
+            _mock_result(
+                "claude-sonnet-4",
+                "anthropic",
+                0.82,
+                {"issue_framing": 0.85, "figure_treatment": 0.78},
+            ),
+        )
+
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase_dir,
+            output_dir=output,
+            include_reports=False,
+            docs_dir=tmp_path / "definitely-missing-docs",
+        )
+
+        assert (output / "index.html").exists()
+        assert not (output / "docs").exists()

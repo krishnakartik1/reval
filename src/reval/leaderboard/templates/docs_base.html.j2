@@ -1,0 +1,130 @@
+{% extends "base.html.j2" %}
+{#
+  Docs tab base template. Extends `base.html.j2` and defines the
+  3-column docs layout (sidebar / article / right-hand TOC) inside
+  the inherited `{% block content %}`.
+
+  Expected Jinja context variables (all required unless noted):
+    nav_sections  — list[DocSection] for the full sidebar site index
+    current_page  — DocPage for the active page, or None on the
+                    landing page (docs/index.html)
+    asset_root    — relative path to public/assets (e.g. "../../assets")
+    index_href    — relative path back to public/index.html
+    docs_href     — relative path back to public/docs/index.html
+
+  Two child blocks are exposed inside `{% block content %}`:
+    {% block article %} — the main prose area (required override)
+    {% block docs_toc %} — the right-hand "on this page" aside,
+                           default renders current_page.toc; overridden
+                           to empty in docs_index.html.j2 to hide the
+                           TOC column on the landing page.
+
+  `{% set active_tab = 'docs' %}` is at module scope so `base.html.j2`'s
+  nav (which reads `active_tab` before rendering `{% block content %}`)
+  picks up the Docs tab highlight on every docs page.
+#}
+{% set active_tab = 'docs' %}
+{% set docs_layout_class = docs_layout_class|default('docs-layout') %}
+{% block title %}{% if current_page %}{{ current_page.title }} · REVAL Docs{% else %}Docs · REVAL{% endif %}{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="{{ asset_root|default('assets') }}/docs.css">
+  <link rel="stylesheet" href="{{ asset_root|default('assets') }}/pygments.css">
+{% endblock %}
+
+{% block content %}
+<div class="wrap relative z-[2] pt-10 pb-24">
+  <div class="{{ docs_layout_class }}">
+
+    {# ── Sidebar: full site index (LlamaIndex-style) ──────── #}
+    {# `docs_href_dir` is the directory prefix for building
+       relative links to sibling docs pages. At depth 1 (landing):
+       `docs_href = "index.html"` → `""`. At depth 2 (section
+       page): `docs_href = "../index.html"` → `"../"`. #}
+    {% set docs_href_dir = docs_href|default('docs/index.html')|replace('index.html', '') %}
+    <aside class="docs-sidebar" x-data="docsNav()">
+      <div class="docs-sidebar-search">
+        <input
+          type="search"
+          placeholder="Filter docs…"
+          x-model="q"
+          aria-label="Filter docs by title"
+        >
+      </div>
+      <nav class="docs-sidebar-nav" aria-label="Docs navigation">
+        {% for section in nav_sections %}
+          <div class="docs-sidebar-section">
+            <h3 class="docs-sidebar-section-title eyebrow">{{ section.title }}</h3>
+            <ul>
+              {% for page in section.pages %}
+                {% set match_blob = (page.title ~ ' ' ~ section.title)|lower %}
+                <li x-show="matches('{{ match_blob|e }}')">
+                  <a
+                    href="{{ docs_href_dir }}{{ section.slug }}/{{ page.slug }}.html"
+                    class="docs-sidebar-link{% if current_page and current_page.slug == page.slug and current_page.section_slug == section.slug %} is-active{% endif %}"
+                  >{{ page.title }}</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    {# ── Article area ─────────────────────────────────────── #}
+    <article class="docs-article">
+      {# Breadcrumb — suppressed on the landing page (no current_page). #}
+      {% if current_page %}
+        {% set current_section = nav_sections|selectattr('slug', 'equalto', current_page.section_slug)|first %}
+        <nav class="docs-breadcrumb eyebrow" aria-label="Breadcrumb">
+          <a href="{{ docs_href|default('docs/index.html') }}">Docs</a>
+          <span aria-hidden="true">›</span>
+          <span>{{ current_section.title if current_section else current_page.section_slug }}</span>
+          <span aria-hidden="true">›</span>
+          <span class="is-current">{{ current_page.title }}</span>
+        </nav>
+      {% endif %}
+
+      {% block article %}{% endblock %}
+    </article>
+
+    {# ── Right-hand "on this page" TOC ────────────────────── #}
+    {% block docs_toc %}
+      <aside class="docs-toc" aria-label="On this page">
+        {% if current_page and current_page.toc %}
+          <h3 class="docs-toc-heading eyebrow">On this page</h3>
+          <ul>
+            {% for entry in current_page.toc %}
+              <li class="docs-toc-item docs-toc-level-{{ entry.level }}">
+                <a href="#{{ entry.slug }}">{{ entry.text }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </aside>
+    {% endblock %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Sidebar filter — pure client-side String.includes over link
+  // titles. `q` is the search input; each sidebar <li> has its own
+  // `x-show="matches('<lowercased title blob>')"`. Empty query =
+  // everything visible. Section headers always render even when
+  // all their links are filtered out — tradeoff: cheap and
+  // dependable, at the cost of showing bare headers during deep
+  // filters.
+  function docsNav() {
+    return {
+      q: '',
+      matches(blob) {
+        const q = (this.q || '').toLowerCase().trim();
+        if (!q) return true;
+        return blob.includes(q);
+      },
+    };
+  }
+</script>
+{% endblock %}
