@@ -117,6 +117,7 @@
           <template x-for="j in judges" :key="j">
             <button
               class="pill"
+              data-testid="judge-pill"
               :data-active="activeJudges.includes(j)"
               @click="toggleJudge(j)"
               :title="j"
@@ -155,7 +156,7 @@
               Provider
               <span x-show="sortKey==='model_provider'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
             </th>
-            <th @click="sortBy('overall_score')" :class="sortKey==='overall_score' ? 'sorted-active':''" class="text-right">
+            <th data-testid="sort-overall" @click="sortBy('overall_score')" :class="sortKey==='overall_score' ? 'sorted-active':''" class="text-right">
               Overall
               <span x-show="sortKey==='overall_score'" class="ml-1 text-[9px]" x-text="sortDir==='asc'?'▲':'▼'"></span>
             </th>
@@ -174,7 +175,11 @@
         </thead>
         <tbody>
           <template x-for="row in sortedFilteredRows" :key="row.slug">
-            <tr @click="window.location='models/'+row.slug+'.html'">
+            <tr
+              data-testid="model-row"
+              :data-model-id="row.model_id"
+              @click="window.location='models/'+row.slug+'.html'"
+            >
               <td>
                 <svg
                   class="radar-svg"
@@ -318,8 +323,8 @@
 
       shortJudge(id) {
         if (!id) return '';
-        // Take the last path component after /, :, or .
-        var parts = id.split(/[/:.]/);
+        // Split on `/` only: splitting on `.` or `:` mangles Bedrock IDs (`amazon.nova-lite-v1:0` -> `"0"`).
+        var parts = id.split('/');
         return parts[parts.length - 1] || id;
       },
 
@@ -405,6 +410,9 @@
       renderScatter() {
         var canvas = document.getElementById('scatterChart');
         if (!canvas || !window.Chart) return;
+        // Idempotent — destroy any prior Chart bound to this canvas before re-drawing.
+        var existing = Chart.getChart(canvas);
+        if (existing) existing.destroy();
         var rows = this.allRows.filter(r => r.overall_score != null);
         if (rows.length === 0) return;
 
