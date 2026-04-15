@@ -14,7 +14,7 @@ from reval.contracts.models import (
     EvalResult,
     ScoringMethod,
 )
-from reval.report import _CATEGORY_ICONS, generate_html_report
+from reval.report import generate_html_report
 
 from .conftest import CATEGORIES
 
@@ -61,7 +61,12 @@ def test_generated_report_loads_clean(
     assert js_errors["page"] == [], f"pageerrors: {js_errors['page']}"
 
     html = page.content()
-    for icon in _CATEGORY_ICONS.values():
-        assert icon in html, f"missing lucide icon {icon!r} in generated report"
+    for cat in EvalCategory:
+        assert (
+            cat.value in html
+        ), f"category {cat.value!r} missing from generated report"
 
-    assert set(_CATEGORY_ICONS.keys()) == set(EvalCategory)
+    assert 'data-lucide="circle"' not in html, (
+        "report rendered the fallback 'circle' icon — a category is missing "
+        "from reval.report._CATEGORY_ICONS"
+    )

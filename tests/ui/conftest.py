@@ -14,23 +14,30 @@ from typing import Any
 
 import pytest
 
-from reval.contracts.models import BenchmarkRun
+from reval.contracts.models import BenchmarkRun, EvalCategory
 from reval.leaderboard.build import build
 
-ARTIFACTS_DIR = Path(__file__).resolve().parent.parent.parent / "artifacts" / "ui"
+UI_TEST_DIR = Path(__file__).resolve().parent
+ARTIFACTS_DIR = UI_TEST_DIR.parent.parent / "artifacts" / "ui"
 
-CATEGORIES = [
-    "argumentation_parity",
-    "factual_accuracy",
-    "figure_treatment",
-    "issue_framing",
-    "policy_attribution",
-]
+CATEGORIES = [c.value for c in EvalCategory]
 
 
 def pytest_collection_modifyitems(config, items):
-    """Forbid async tests in tests/ui/ — pytest-playwright's page fixture is sync-only."""
+    """Forbid async tests under tests/ui/ — pytest-playwright's page fixture is sync-only.
+
+    Scoped to tests/ui/ on purpose. `pytest_collection_modifyitems` in any conftest
+    receives the full test-session item list (not just items under that conftest's
+    directory), so an unscoped check would raise on the async provider tests under
+    tests/ and break any default `pytest tests/` run.
+    """
     for item in items:
+        try:
+            item_path = Path(item.fspath).resolve()
+        except (AttributeError, TypeError):
+            continue
+        if not item_path.is_relative_to(UI_TEST_DIR):
+            continue
         if inspect.iscoroutinefunction(getattr(item, "function", None)):
             raise pytest.UsageError(
                 f"UI tests must be sync (pytest-playwright uses a sync page fixture): "
