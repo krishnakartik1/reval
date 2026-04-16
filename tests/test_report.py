@@ -229,6 +229,22 @@ def test_save_run_outputs_sanitizes_model_id(tmp_path):
     assert run_dir.name.startswith("amazon_nova-pro-v1_0_")
 
 
+def test_save_run_outputs_writes_log_when_provided(tmp_path, minimal_run):
+    from reval.report import save_run_outputs
+
+    run_dir = save_run_outputs(minimal_run, tmp_path, log_content="some log text")
+    log_path = run_dir / "run.log"
+    assert log_path.exists()
+    assert log_path.read_text() == "some log text"
+
+
+def test_save_run_outputs_no_log_by_default(tmp_path, minimal_run):
+    from reval.report import save_run_outputs
+
+    run_dir = save_run_outputs(minimal_run, tmp_path)
+    assert not (run_dir / "run.log").exists()
+
+
 def test_html_report_with_rubric_scores(tmp_path):
     from reval.report import generate_html_report
 
