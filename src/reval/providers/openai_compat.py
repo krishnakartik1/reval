@@ -24,6 +24,7 @@ DEFAULT_MODEL = "gpt-4o"
 
 # Models that require `max_completion_tokens` instead of the legacy `max_tokens`.
 # Covers o-series reasoning models and GPT-5+.
+# "o2" intentionally absent — OpenAI skipped that generation.
 _MAX_COMPLETION_TOKENS_PREFIXES = ("o1", "o3", "o4", "gpt-5")
 
 
