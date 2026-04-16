@@ -106,7 +106,12 @@
       {# Judge pills #}
       <div class="flex flex-col gap-3 flex-1 min-w-0">
         <div class="flex items-center justify-between">
-          <span class="eyebrow">Judge</span>
+          <span class="eyebrow flex items-center gap-1">Judge
+            <span title="Only one judge can be active at a time. Mixing judges makes direct comparisons misleading — each judge has its own scoring calibration."
+                  style="cursor: help; color: var(--fg-dim);">
+              <i data-lucide="info" style="width: 13px; height: 13px;"></i>
+            </span>
+          </span>
           <button
             x-show="activeJudges.length"
             @click="activeJudges = []"
@@ -267,6 +272,7 @@
       <div style="height: 320px;">
         <canvas id="overallBarChart"
                 role="img"
+                style="cursor: pointer;"
                 aria-label="Horizontal bar chart ranking models by overall score. See the leaderboard table above for the same data in accessible form."></canvas>
       </div>
     </div>
@@ -287,6 +293,7 @@
       <div style="height: 400px;">
         <canvas id="categoryGroupedBar"
                 role="img"
+                style="cursor: pointer;"
                 aria-label="Grouped horizontal bar chart comparing models across ethical categories."></canvas>
       </div>
     </div>
@@ -323,9 +330,8 @@
         {# Data rows #}
         <template x-for="row in sortedFilteredRows" :key="row.slug">
           <div role="row"
-               class="heatmap-row"
-               :class="{'is-clickable': row.report_href}"
-               @click="row.report_href && (location.href = row.report_href)">
+               class="heatmap-row is-clickable"
+               @click="window.location.href = 'models/' + row.slug + '.html'">
             <div role="rowheader"
                  class="heatmap-cell-label"
                  x-text="row.model_id"></div>
@@ -357,6 +363,7 @@
       <div style="height: 380px;">
         <canvas id="radarChart"
                 role="img"
+                style="cursor: pointer;"
                 aria-label="Radar chart overlaying the top 5 models' scores across four ethical categories."></canvas>
       </div>
       <p x-show="sortedFilteredRows.length === 0"
@@ -368,13 +375,6 @@
   </section>
   {% endif %}
 
-  {# ── Footnote ──────────────────────────────────────────────── #}
-
-  <p class="mt-16 text-[11px] leading-[1.65] max-w-3xl" style="color: var(--fg-dim);">
-    Judge and embeddings models vary across runs — see each per-model detail
-    page for exact settings. Mixing judges across rows can make direct
-    comparisons misleading; prefer runs that share a judge.
-  </p>
 
 </div>
 
@@ -462,9 +462,13 @@
       },
 
       toggleJudge(j) {
-        var idx = this.activeJudges.indexOf(j);
-        if (idx >= 0) this.activeJudges.splice(idx, 1);
-        else this.activeJudges.push(j);
+        // Single-select: only one judge at a time. Reassignment (not
+        // splice/push) so Alpine's $watch fires reliably.
+        if (this.activeJudges.length === 1 && this.activeJudges[0] === j) {
+          this.activeJudges = [];
+        } else {
+          this.activeJudges = [j];
+        }
       },
 
       resetFilters() {
@@ -618,6 +622,18 @@
             responsive: true,
             maintainAspectRatio: false,
             layout: { padding: { left: 8, right: 8 } },
+            onClick: function (evt, elements, chart) {
+              var idx;
+              if (elements.length) {
+                idx = elements[0].index;
+              } else {
+                idx = Math.round(chart.scales.y.getValueForPixel(evt.y));
+              }
+              if (idx != null && idx >= 0 && idx < rows.length) {
+                var row = rows[idx];
+                if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+              }
+            },
             plugins: {
               legend: { display: false },
               tooltip: {
@@ -690,6 +706,18 @@
             responsive: true,
             maintainAspectRatio: false,
             layout: { padding: { left: 8, right: 8 } },
+            onClick: function (evt, elements, chart) {
+              var idx;
+              if (elements.length) {
+                idx = elements[0].index;
+              } else {
+                idx = Math.round(chart.scales.y.getValueForPixel(evt.y));
+              }
+              if (idx != null && idx >= 0 && idx < rows.length) {
+                var row = rows[idx];
+                if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+              }
+            },
             plugins: {
               legend: {
                 display: true,
@@ -798,6 +826,11 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            onClick: function (evt, elements) {
+              if (!elements.length) return;
+              var row = top5[elements[0].datasetIndex];
+              if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+            },
             plugins: {
               legend: {
                 display: true,

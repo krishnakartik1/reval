@@ -626,6 +626,13 @@ class TestBuild:
         assert "paretoFrontier" not in index
         assert "renderScatter" not in index
 
+    def test_index_no_footer_judge_note(self, showcase: Path, tmp_path: Path) -> None:
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "Mixing judges across rows" not in index
+        assert 'data-lucide="info"' in index
+
     def test_rubric_descriptions_embedded_in_index(
         self, showcase: Path, tmp_path: Path
     ) -> None:
