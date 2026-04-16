@@ -213,3 +213,39 @@ def test_model_page_criterion_bars_have_data_category(
     expect(figure_canvas).to_have_attribute("data-category", "figure_treatment")
     issue_canvas = page.locator("#criterionBars-issue_framing")
     expect(issue_canvas).to_have_attribute("data-category", "issue_framing")
+
+
+def test_overall_bar_click_navigates_to_model_page(page: Page, site_url: str) -> None:
+    """Verify the onClick handler is wired — trigger it via Chart.js API."""
+    page.goto(f"{site_url}/")
+    _wait_for_leaderboard_hydration(page)
+    _wait_for_chart(page, "overallBarChart")
+    slug = page.evaluate("""() => {
+        const c = Chart.getChart(document.getElementById('overallBarChart'));
+        const meta = c.getDatasetMeta(0);
+        if (!meta.data.length) return null;
+        // Simulate a click on the first bar element
+        const el = meta.data[0];
+        const evt = { x: el.x, y: el.y, native: new MouseEvent('click') };
+        c.options.onClick(evt, [{ index: 0, datasetIndex: 0 }]);
+        return true;
+    }""")
+    assert slug is not None
+    page.wait_for_url("**/models/*.html", timeout=5000)
+
+
+def test_criterion_heatmap_rows_are_clickable(page: Page, site_url: str) -> None:
+    """Heatmap rows should have is-clickable class and navigate to model page."""
+    page.goto(f"{site_url}/")
+    _wait_for_leaderboard_hydration(page)
+    rows = page.locator(".criterion-heatmap-grid .heatmap-row")
+    if rows.count() == 0:
+        pytest.skip("No criterion heatmap rows (fixture lacks rubric data)")
+    first_row = rows.first
+    assert "is-clickable" in (first_row.get_attribute("class") or "")
+
+
+def test_footer_judge_note_removed(page: Page, site_url: str) -> None:
+    page.goto(f"{site_url}/")
+    _wait_for_leaderboard_hydration(page)
+    assert "Mixing judges across rows" not in page.content()

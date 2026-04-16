@@ -105,3 +105,36 @@ def test_per_row_radar_has_one_axis_per_category(
     first_row = page.get_by_test_id("model-row").first
     axes = first_row.locator("svg.radar-svg line.radar-axis")
     expect(axes).to_have_count(expected_axes)
+
+
+def test_judge_filter_is_exclusive(page: Page, site_url: str) -> None:
+    """Clicking judge A then judge B should leave only B active."""
+    page.goto(f"{site_url}/")
+    _wait_for_hydration(page)
+
+    pills = page.get_by_test_id("judge-pill")
+    pill_a = pills.nth(0)
+    pill_b = pills.nth(1)
+
+    pill_a.click()
+    active_after_a = page.locator("[data-testid='judge-pill'][data-active='true']")
+    expect(active_after_a).to_have_count(1)
+
+    pill_b.click()
+    active_after_b = page.locator("[data-testid='judge-pill'][data-active='true']")
+    expect(active_after_b).to_have_count(1)
+    assert active_after_b.first.get_attribute("data-active") == "true"
+
+    pill_b.click()
+    active_after_deselect = page.locator(
+        "[data-testid='judge-pill'][data-active='true']"
+    )
+    expect(active_after_deselect).to_have_count(0)
+
+
+def test_judge_info_tooltip_visible(page: Page, site_url: str) -> None:
+    """The info icon next to the Judge heading should be visible."""
+    page.goto(f"{site_url}/")
+    _wait_for_hydration(page)
+    info_icon = page.locator("[data-lucide='info']").first
+    expect(info_icon).to_be_visible()
