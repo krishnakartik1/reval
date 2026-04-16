@@ -2,7 +2,9 @@
 
 import importlib.util
 import json
+import logging
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -242,3 +244,92 @@ class TestLeaderboardBuildDocsFlag:
         index_html = (output / "index.html").read_text()
         assert ">Docs<" in index_html
         assert 'href="docs/index.html"' in index_html
+
+
+def test_cli_run_writes_fallback_log_on_failure(tmp_path):
+    """When run_benchmark raises, captured logs are written to last_failed_run.log."""
+    output_dir = tmp_path / "results"
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    # Create a minimal eval file so load_evals_from_directory finds something
+    eval_file = dataset_dir / "us" / "issue_framing"
+    eval_file.mkdir(parents=True)
+    (eval_file / "test-001.json").write_text(
+        json.dumps(
+            {
+                "eval_id": "us-issue_framing-001",
+                "category": "issue_framing",
+                "country": "us",
+                "topic": "test",
+                "prompt_a": "A",
+                "prompt_b": "B",
+                "ground_truth_a": "ga",
+                "ground_truth_b": "gb",
+                "entities_a": ["e"],
+                "entities_b": ["e"],
+                "rubric_id": "issue_framing_v1",
+            }
+        )
+    )
+
+    fake_config = MagicMock()
+    fake_config.default_judge = "nova-lite"
+    fake_config.default_embeddings = "titan-v2"
+
+    fake_eval = MagicMock()
+    fake_eval.eval_id = "us-issue_framing-001"
+
+    async def boom(*args, **kwargs):
+        # Emit a log line before raising so we can verify it lands in the file
+        logging.getLogger("reval.runner").error("something went wrong")
+        raise RuntimeError("boom")
+
+    with (
+        # Local imports inside run() — patch at source module
+        patch("reval.config.load_config", return_value=fake_config),
+        patch(
+            "reval.config.resolve_model",
+            return_value=("openai", "gpt-4o-mini"),
+        ),
+        patch("reval.scoring.judge.LLMJudge", return_value=MagicMock()),
+        patch("reval.scoring.parity.LLMParityJudge", return_value=MagicMock()),
+        patch(
+            "reval.utils.embeddings.embeddings_from_config",
+            return_value=MagicMock(),
+        ),
+        # Top-level imports in cli.py — patch on the cli module
+        patch(
+            "reval.cli.provider_from_config",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "reval.cli.load_evals_from_directory",
+            return_value=[fake_eval],
+        ),
+        patch.object(
+            __import__("reval.runner", fromlist=["EvalRunner"]).EvalRunner,
+            "run_benchmark",
+            new=boom,
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--model",
+                "gpt-4o-mini",
+                "--dataset",
+                str(dataset_dir),
+                "--output",
+                str(output_dir),
+            ],
+        )
+
+    # The command should have raised (non-zero exit)
+    assert result.exit_code != 0
+    # Fallback log should exist
+    fallback = output_dir / "last_failed_run.log"
+    assert fallback.exists(), f"Expected {fallback} to exist. Output:\n{result.output}"
+    log_text = fallback.read_text()
+    assert "something went wrong" in log_text

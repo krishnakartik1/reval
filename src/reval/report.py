@@ -1147,8 +1147,9 @@ def save_run_outputs(
     output_dir: str | Path,
     run_name: str | None = None,
     evals: list[EvalEntry] | None = None,
+    log_content: str | None = None,
 ) -> Path:
-    """Save all run outputs (JSON, HTML, Markdown) into a subdirectory.
+    """Save all run outputs (JSON, HTML, Markdown, optional log) into a subdirectory.
 
     Args:
         run: Completed benchmark run.
@@ -1157,6 +1158,8 @@ def save_run_outputs(
         evals: Optional list of `EvalEntry` objects used for the run.
             Forwarded to `generate_html_report` so the per-result
             expansion panel can show the original test-case data.
+        log_content: Optional captured log text. When provided, written
+            to ``run.log`` in the run directory.
 
     Returns:
         Path to the created run directory.
@@ -1174,6 +1177,9 @@ def save_run_outputs(
 
     generate_html_report(run, run_dir / "report.html", evals=evals)
     generate_markdown_report(run, run_dir / "report.md")
+
+    if log_content is not None:
+        (run_dir / "run.log").write_text(log_content, encoding="utf-8")
 
     return run_dir
 

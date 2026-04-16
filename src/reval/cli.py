@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import logging
 from pathlib import Path
 
 import typer
@@ -232,7 +234,39 @@ def run(
 
     console.print(f"[cyan]Running benchmark on {model}...[/cyan]\n")
 
-    benchmark_run = asyncio.run(runner.run_benchmark(evals, on_result))
+    # Capture reval.* log output so it can be written to run.log alongside
+    # the other run artifacts. Scoped to the "reval" namespace to avoid
+    # flooding the log with botocore/httpx/asyncio DEBUG noise.
+    log_buf = io.StringIO()
+    log_handler = logging.StreamHandler(log_buf)
+    log_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s:%(funcName)s:%(lineno)d: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    reval_logger = logging.getLogger("reval")
+    prev_level = reval_logger.level
+    reval_logger.addHandler(log_handler)
+    reval_logger.setLevel(logging.DEBUG)
+
+    benchmark_run = None
+    try:
+        benchmark_run = asyncio.run(runner.run_benchmark(evals, on_result))
+    finally:
+        reval_logger.removeHandler(log_handler)
+        reval_logger.setLevel(prev_level)
+
+        log_content: str | None = log_buf.getvalue() or None
+
+        # On failure, still dump captured logs so the user can diagnose.
+        # The finally block does NOT suppress the exception — after writing
+        # the fallback log the original exception propagates.
+        if benchmark_run is None and log_content:
+            fallback = Path(output) / "last_failed_run.log"
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            fallback.write_text(log_content, encoding="utf-8")
+            console.print(f"[red]Run failed. Logs saved to {fallback}[/red]")
 
     # Display results
     console.print("\n")
@@ -271,10 +305,14 @@ def run(
 
     from reval.report import save_run_outputs
 
-    run_dir = save_run_outputs(benchmark_run, output, evals=evals)
+    run_dir = save_run_outputs(
+        benchmark_run, output, evals=evals, log_content=log_content
+    )
     console.print(f"\n[green]Results saved to {run_dir}/[/green]")
-    console.print(f"[green]HTML report: {run_dir / 'report.html'}[/green]")
-    console.print(f"[green]Markdown report: {run_dir / 'report.md'}[/green]")
+    console.print(f"[green]HTML report:      {run_dir / 'report.html'}[/green]")
+    console.print(f"[green]Markdown report:  {run_dir / 'report.md'}[/green]")
+    if log_content:
+        console.print(f"[green]Run log:          {run_dir / 'run.log'}[/green]")
     webbrowser.open((run_dir / "report.html").resolve().as_uri())
 
 
