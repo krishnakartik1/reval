@@ -71,8 +71,8 @@ evals in the shipped dataset — if it returns rows without crashing,
 your Python environment is wired up correctly. At this point you
 haven't spent any API credit; `list-evals` only reads local files.
 
-To exercise a provider end-to-end with a single prompt, run a
-one-eval slice:
+To verify credentials end-to-end, run a filtered slice of one
+category:
 
 ```bash
 reval run --model claude-haiku-3-5 --country us --category issue_framing

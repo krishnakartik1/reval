@@ -15,6 +15,8 @@ reval --help
 ```
 
 - `reval run` — execute a benchmark run against a target model.
+- `reval info` — print installed version, categories, countries, and
+  ground truth levels.
 - `reval list-evals` — enumerate eval entries from the dataset.
 - `reval validate` — validate `.jsonl` files against the JSON schema.
 - `reval leaderboard build` — regenerate the static leaderboard site
