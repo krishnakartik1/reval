@@ -470,7 +470,7 @@
 
     // Wrap each chart call in its own try/catch so a Chart.js failure
     // on one canvas doesn't prevent the others from rendering. Same
-    // crash-safety pattern as index.html.j2's renderScatter(). Emit
+    // crash-safety pattern as index.html.j2's renderAllCharts(). Emit
     // at `error` severity so the Playwright `js_errors` fixture
     // catches a silent degradation in CI — `console.warn` would
     // render a blank canvas and leave the test suite green.
