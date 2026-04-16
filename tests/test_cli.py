@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from reval.cli import app
+from tests.fixtures.benchmark_run import make_benchmark_run
 
 _HAS_DOCS_EXTRA = all(
     importlib.util.find_spec(mod) is not None
@@ -333,3 +334,67 @@ def test_cli_run_writes_fallback_log_on_failure(tmp_path):
     assert fallback.exists(), f"Expected {fallback} to exist. Output:\n{result.output}"
     log_text = fallback.read_text()
     assert "something went wrong" in log_text
+
+
+def test_cli_run_writes_run_log_on_success(tmp_path):
+    """On a successful run, run.log is written inside the timestamped run dir."""
+    output_dir = tmp_path / "results"
+
+    fake_config = MagicMock()
+    fake_config.default_judge = "nova-lite"
+    fake_config.default_embeddings = "titan-v2"
+
+    fake_eval = MagicMock()
+    fake_eval.eval_id = "us-issue_framing-001"
+
+    fake_run = make_benchmark_run(
+        model_id="gpt-4o-mini",
+        model_provider="openai",
+        completed_evals=1,
+        total_evals=1,
+        overall_score=0.9,
+        category_scores={"issue_framing": 0.9},
+    )
+
+    async def succeed(*args, **kwargs):
+        logging.getLogger("reval.runner").info("eval completed")
+        return fake_run
+
+    with (
+        patch("reval.config.load_config", return_value=fake_config),
+        patch("reval.config.resolve_model", return_value=("openai", "gpt-4o-mini")),
+        patch("reval.scoring.judge.LLMJudge", return_value=MagicMock()),
+        patch("reval.scoring.parity.LLMParityJudge", return_value=MagicMock()),
+        patch(
+            "reval.utils.embeddings.embeddings_from_config",
+            return_value=MagicMock(),
+        ),
+        patch("reval.cli.provider_from_config", return_value=MagicMock()),
+        patch("reval.cli.load_evals_from_directory", return_value=[fake_eval]),
+        patch.object(
+            __import__("reval.runner", fromlist=["EvalRunner"]).EvalRunner,
+            "run_benchmark",
+            new=succeed,
+        ),
+        patch("webbrowser.open"),  # prevent browser opening during test
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "--model",
+                "gpt-4o-mini",
+                "--dataset",
+                str(tmp_path / "dataset"),
+                "--output",
+                str(output_dir),
+            ],
+        )
+
+    assert result.exit_code == 0, f"CLI failed:\n{result.output}"
+    run_dirs = list(output_dir.iterdir())
+    assert len(run_dirs) == 1, f"Expected exactly one run dir, got: {run_dirs}"
+    run_dir = run_dirs[0]
+    log_path = run_dir / "run.log"
+    assert log_path.exists(), f"run.log not found in {run_dir}"
+    assert "eval completed" in log_path.read_text()

@@ -255,6 +255,7 @@ def run(
         benchmark_run = asyncio.run(runner.run_benchmark(evals, on_result))
     finally:
         reval_logger.removeHandler(log_handler)
+        log_handler.close()
         reval_logger.setLevel(prev_level)
 
         log_content: str | None = log_buf.getvalue() or None
@@ -262,11 +263,16 @@ def run(
         # On failure, still dump captured logs so the user can diagnose.
         # The finally block does NOT suppress the exception — after writing
         # the fallback log the original exception propagates.
-        if benchmark_run is None and log_content:
-            fallback = Path(output) / "last_failed_run.log"
-            fallback.parent.mkdir(parents=True, exist_ok=True)
-            fallback.write_text(log_content, encoding="utf-8")
-            console.print(f"[red]Run failed. Logs saved to {fallback}[/red]")
+        if benchmark_run is None:
+            if log_content:
+                fallback = Path(output) / "last_failed_run.log"
+                fallback.parent.mkdir(parents=True, exist_ok=True)
+                fallback.write_text(log_content, encoding="utf-8")
+                console.print(f"[red]Run failed. Logs saved to {fallback}[/red]")
+            else:
+                console.print(
+                    "[yellow]Run failed. No reval log output was captured.[/yellow]"
+                )
 
     # Display results
     console.print("\n")
