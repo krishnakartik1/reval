@@ -216,21 +216,16 @@ def test_model_page_criterion_bars_have_data_category(
 
 
 def test_overall_bar_click_navigates_to_model_page(page: Page, site_url: str) -> None:
-    """Verify the onClick handler is wired — trigger it via Chart.js API."""
+    """Click anywhere on the overall bar chart → model page."""
     page.goto(f"{site_url}/")
     _wait_for_leaderboard_hydration(page)
     _wait_for_chart(page, "overallBarChart")
-    slug = page.evaluate("""() => {
-        const c = Chart.getChart(document.getElementById('overallBarChart'));
-        const meta = c.getDatasetMeta(0);
-        if (!meta.data.length) return null;
-        // Simulate a click on the first bar element
-        const el = meta.data[0];
-        const evt = { x: el.x, y: el.y, native: new MouseEvent('click') };
-        c.options.onClick(evt, [{ index: 0, datasetIndex: 0 }]);
-        return true;
-    }""")
-    assert slug is not None
+    canvas = page.locator("#overallBarChart")
+    canvas.scroll_into_view_if_needed()
+    box = canvas.bounding_box()
+    assert box is not None
+    # Click in the middle of the canvas where a bar is rendered
+    page.mouse.click(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.5)
     page.wait_for_url("**/models/*.html", timeout=5000)
 
 

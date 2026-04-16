@@ -622,10 +622,17 @@
             responsive: true,
             maintainAspectRatio: false,
             layout: { padding: { left: 8, right: 8 } },
-            onClick: function (evt, elements) {
-              if (!elements.length) return;
-              var row = rows[elements[0].index];
-              if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+            onClick: function (evt, elements, chart) {
+              var idx;
+              if (elements.length) {
+                idx = elements[0].index;
+              } else {
+                idx = Math.round(chart.scales.y.getValueForPixel(evt.y));
+              }
+              if (idx != null && idx >= 0 && idx < rows.length) {
+                var row = rows[idx];
+                if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+              }
             },
             plugins: {
               legend: { display: false },
@@ -699,10 +706,17 @@
             responsive: true,
             maintainAspectRatio: false,
             layout: { padding: { left: 8, right: 8 } },
-            onClick: function (evt, elements) {
-              if (!elements.length) return;
-              var row = rows[elements[0].index];
-              if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+            onClick: function (evt, elements, chart) {
+              var idx;
+              if (elements.length) {
+                idx = elements[0].index;
+              } else {
+                idx = Math.round(chart.scales.y.getValueForPixel(evt.y));
+              }
+              if (idx != null && idx >= 0 && idx < rows.length) {
+                var row = rows[idx];
+                if (row && row.slug) window.location.href = 'models/' + row.slug + '.html';
+              }
             },
             plugins: {
               legend: {
