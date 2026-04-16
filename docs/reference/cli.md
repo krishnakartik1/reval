@@ -47,15 +47,23 @@ Flags:
   `nova-lite` from `evals/config.yaml`.
 - **`--embeddings-model`** — Override the embeddings backend.
   Defaults to `titan-v2`.
-- **`--limit N`** — Cap the number of evals run. Useful for smoke
-  tests.
-- **`--output-dir`** — Override the default `results/<run>/`
+- **`--output`** / **`-o`** — Override the default `results/<run>/`
   destination.
 
 Every run writes three files per entry:
 `results.json`, `report.html`, `report.md`. See
 [Viewing reports](../getting-started/viewing-reports.md) for what
 each file contains.
+
+## `reval info`
+
+Prints the installed version, the five evaluation categories, supported
+countries, and the four ground truth levels. No API calls — useful as a
+quick install check and a reference for the fact-aligned taxonomy.
+
+```bash
+reval info
+```
 
 ## `reval list-evals`
 

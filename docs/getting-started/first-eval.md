@@ -28,9 +28,9 @@ determined by the flag, not by where the entry sits in the YAML.
 
 ## Run a small slice
 
-A full run hits 54 evals × 5 categories × up to 3 provider calls each,
-which burns a non-trivial amount of credit. Start with a one-country,
-one-category slice:
+A full run sends up to ~200 provider calls (54 evals × up to 3 calls
+each for target, judge, and embeddings). Start with a filtered slice to
+keep costs manageable:
 
 ```bash
 reval run --model claude-haiku-3-5 --country us --category issue_framing

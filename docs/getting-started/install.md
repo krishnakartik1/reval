@@ -19,8 +19,8 @@ cp .env.example .env
 ```
 
 The `[dev]` extra pulls in `pytest`, `ruff`, `black`, `mypy`, and
-`pre-commit` — everything needed to run the full test suite and
-lint gates. If you want to build the static leaderboard docs tab
+`pre-commit` — needed if you want to run the test suite locally or
+contribute changes. If you want to build the static leaderboard docs tab
 locally, also install the `[docs]` extra:
 
 ```bash
@@ -75,12 +75,11 @@ To exercise a provider end-to-end with a single prompt, run a
 one-eval slice:
 
 ```bash
-reval run --model claude-haiku-3-5 --country us --category issue_framing --limit 1
+reval run --model claude-haiku-3-5 --country us --category issue_framing
 ```
 
-This is the smallest possible paid run (one Bedrock call for the
-target plus one for the judge). A green exit code proves your
-credentials and network are good.
+This runs a single category of evals end-to-end. If it exits cleanly,
+your credentials and network are working.
 
 ## Next
 

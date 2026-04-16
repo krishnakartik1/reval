@@ -91,8 +91,8 @@ If you need a surface that's not in the registry (a new cloud,
 a vendor-specific API), you'll need to write a provider
 implementation:
 
-1. Subclass `reval.providers.base.LLMProvider`.
-2. Implement the async `generate()` method.
+1. Subclass `reval.contracts.provider.LLMProvider`.
+2. Implement the async `acomplete(self, system: str | None, user: str, *, max_tokens: int = 4096) -> CompletionResult` method.
 3. Register the class in `_REGISTRY` in
    `reval/src/reval/providers/factory.py`.
 4. Add a config entry in `evals/config.yaml` that uses your new

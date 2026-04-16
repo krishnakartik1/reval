@@ -90,3 +90,6 @@ A few things REVAL is deliberately **not** trying to do:
   JSON schema that validates it.
 - [Providers & models](../reference/providers.md) — how to point
   REVAL at your preferred judge and target.
+- [Leaderboard](https://revalbench.com) — benchmark results for
+  models evaluated to date, with per-category scores and run-level
+  reports.

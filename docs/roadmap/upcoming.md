@@ -41,64 +41,24 @@ When reval-webui lands, it will:
 Until it exists, the static leaderboard at revalbench.com — which
 you're reading right now — is the only user-facing surface.
 
-## Publish-results button
+## Submitting results to the public leaderboard
 
-**Status: design sketch, deferred to webui scaffolding.**
+**Status: not yet available.**
 
-When `reval-webui` is built, it needs a "Publish results"
-affordance that takes a completed reval run (`results.json` +
-per-run HTML report) and pushes it to the public leaderboard
-pipeline. Open design questions:
+Today, results appear on the [revalbench.com](https://revalbench.com)
+leaderboard only from runs curated by the REVAL maintainers. A
+self-serve submission flow — where anyone can run the benchmark and
+publish their results — is planned as part of the `reval-webui`
+milestone. Watch the repo for updates.
 
-- One-click GitHub Action trigger?
-- Direct write to the leaderboard data directory?
-- Manifest-signing step that the deploy job picks up?
+## PyPI publication
 
-Capturing the requirement now so it lands in the initial webui
-scaffold rather than as an after-the-fact bolt-on.
+**Status: deferred, targeting mid-2026.**
 
-## PyPI publication + version pinning
-
-**Status: deferred ~4 weeks from docs-tab planning (revisit mid-2026-05).**
-
-Today `reval-collector` depends on reval via an editable install:
-
-```toml
-# reval-collector/pyproject.toml
-[tool.uv.sources]
-reval = { path = "../reval", editable = true }
-```
-
-That works because the two sub-repos are siblings inside
-`~/Documents/reval-workspace/`. Once reval hits a stable minor
-version, the plan is:
-
-1. Publish reval to PyPI (or at least a git tag).
-2. Switch collector's `tool.uv.sources` to a semver range like
-   `reval>=0.3,<0.4`.
-3. Adopt a `CHANGELOG.md [CONTRACT]` section for breaking changes,
-   so downstream consumers (collector, webui) can pin against a
-   known-good minor version.
-
-This unblocks distributing reval independently of the sibling-
-repo layout.
-
-## Release coordinator agent
-
-**Status: deferred until version pinning.**
-
-Once reval is published and collector pins against a release, the
-plan is to add a `release-coordinator` agent to the workspace-level
-`.claude/agents/` directory. It would handle:
-
-- Bumping reval's version.
-- Regenerating the CHANGELOG for any `[CONTRACT]` breakage.
-- Opening a coordinated PR in collector (and eventually webui)
-  to bump the pinned range.
-
-For now, the existing `reval-architect`, `contract-impact`, and
-`cross-repo-pr-reviewer` agents are sufficient — they catch
-breakage, they just don't automate the version bump.
+Today `reval` is installed from source via `pip install -e .`. A PyPI
+release is planned once the dataset and API reach a stable minor
+version. This will also unblock pinned dependency management for
+`reval-collector` and future downstream consumers.
 
 ## Dataset expansion
 
@@ -115,20 +75,14 @@ See `reval/README.md#Roadmap` for the authoritative phase
 breakdown. New evals land via PRs that touch
 `evals/datasets/<country>/` and get validated by CI.
 
-## Drift tests
+## Documentation consistency tests
 
-**Status: open follow-up.**
+**Status: planned.**
 
-Several docs pages duplicate prose from `reval/README.md` and the
-rubric YAML files (install steps, scoring formulas, rubric
-criteria). This was a deliberate v1 tradeoff — building a full
-README-to-docs extractor would have tripled the docs tab scope.
-
-The follow-up is a lightweight grep-based drift test: assert that
-specific substrings ("`pip install -e`", "`0.85`", each rubric
-criterion name) appear in both the README and the corresponding
-docs page. If they drift apart, CI fails and you know to update
-both.
+Some sections of the docs and README describe the same facts (install
+commands, scoring thresholds, rubric criteria). Keeping them in sync is
+currently manual. A lightweight CI check that asserts key substrings
+appear in both places is planned for a future release.
 
 ## Known gaps
 
