@@ -398,6 +398,16 @@ def leaderboard_build(
             "name, which would make `--docs <path>` unreachable."
         ),
     ),
+    rubrics: Path = typer.Option(
+        _DEFAULT_RUBRICS,
+        "--rubrics",
+        help=(
+            "Path to the evals/rubrics/ directory containing criterion YAML "
+            "files. Used to populate tooltip descriptions on leaderboard "
+            "charts. Pass a non-existent path to skip (tooltips degrade "
+            "to showing numeric scores only)."
+        ),
+    ),
 ) -> None:
     """Render the static leaderboard site from `showcase/*/results.json`.
 
@@ -432,6 +442,13 @@ def leaderboard_build(
         else:
             console.print(f"[cyan]Regenerating reports against {dataset_dir}...[/cyan]")
 
+    rubrics_dir = rubrics if rubrics.exists() else None
+    if rubrics_dir is None:
+        console.print(
+            f"[yellow]Rubrics not found at {rubrics} — chart tooltips will "
+            "show numeric scores only.[/yellow]"
+        )
+
     # Docs tab — mirrors the `--dataset` fallback pattern above.
     # Passing a non-existent path silently skips the docs build; the
     # rest of the site still builds. On wheel installs `reval/docs/`
@@ -453,6 +470,7 @@ def leaderboard_build(
         include_reports=include_reports,
         dataset_dir=dataset_dir,
         docs_dir=docs_dir,
+        rubrics_dir=rubrics_dir,
     )
 
     if report.partial_matches:

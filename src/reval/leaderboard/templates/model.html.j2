@@ -109,6 +109,51 @@
   </section>
   {% endif %}
 
+  {# ── Per-criterion bars (rubric decomposition) ─────────────── #}
+  {% set figure_criteria = row.aggregated_rubric_scores.get('figure_treatment') %}
+  {% set issue_criteria = row.aggregated_rubric_scores.get('issue_framing') %}
+  {% if figure_criteria or issue_criteria %}
+  <section class="reveal reveal-2 mb-16">
+    <div class="eyebrow mb-4">Rubric criteria</div>
+    <p class="text-[12px] leading-[1.6] mb-6 max-w-3xl" style="color: var(--fg-dim);">
+      Each LLM-judged category breaks down into four rubric criteria
+      scored on a 1–5 Likert scale. Bars below show the mean
+      criterion score for this model, normalized to 0–1. Threshold
+      bands follow the judge scale: dark for ≥ 0.875 (raw ≥ 4.5),
+      warm for ≥ 0.625 (raw ≥ 3.5), cool otherwise.
+    </p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {% if figure_criteria %}
+      <div class="p-6" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+        <div class="eyebrow mb-3">Figure treatment</div>
+        <div style="height: 220px;">
+          <canvas id="criterionBars-figure_treatment" data-category="figure_treatment"></canvas>
+        </div>
+        <p class="text-[11px] leading-[1.55] mt-4" style="color: var(--fg-dim);">
+          <strong style="color: var(--fg);">Figure A only:</strong>
+          paired scoring retains only the side-A rubric scores on
+          the merged result (runner limitation — a balanced average
+          is a v2 follow-up).
+        </p>
+      </div>
+      {% endif %}
+      {% if issue_criteria %}
+      <div class="p-6" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+        <div class="eyebrow mb-3">Issue framing</div>
+        <div style="height: 220px;">
+          <canvas id="criterionBars-issue_framing" data-category="issue_framing"></canvas>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <p class="text-[11px] italic leading-[1.55] mt-5 max-w-3xl" style="color: var(--fg-dim);">
+      argumentation_parity also uses a rubric, but its paired A/B
+      scoring shape doesn't fit a flat bar — a dedicated parity
+      panel is planned for a future release.
+    </p>
+  </section>
+  {% endif %}
+
   {# ── Run metadata grid ────────────────────────────────────── #}
   <section class="reveal reveal-3 mb-16">
     <div class="eyebrow mb-4">Run metadata</div>
@@ -179,6 +224,7 @@
     var rowData = {{ row_data | tojson | safe }};
     var avgData = {{ avg_data | tojson | safe }};
     var categories = {{ categories | tojson | safe }};
+    window.__revalRubricDescriptions = {{ rubric_descriptions | tojson | safe }};
 
     // Delta-vs-average cells
     categories.forEach(function (cat) {
@@ -298,10 +344,164 @@
       });
     }
 
+    // Per-criterion bars (rubric decomposition)
+    // Likert-aligned thresholds: raw 4.5 / 3.5 out of 5 → normalized
+    // 0.875 / 0.625. Reuses the existing .score-* CSS variables so
+    // the palette stays consistent with the rest of the page while
+    // matching the judge scale semantically.
+    function criterionBarColor(score, isDark) {
+      // score is the already-normalized 0-1 value.
+      var palette = {
+        high: isDark ? '#d47a47' : '#a85c32', // accent
+        mid:  isDark ? 'rgba(212,122,71,0.55)' : 'rgba(168,92,50,0.55)',
+        low:  isDark ? 'rgba(143,138,126,0.55)' : 'rgba(107,102,96,0.45)',
+      };
+      if (score == null) return palette.low;
+      if (score >= 0.875) return palette.high;
+      if (score >= 0.625) return palette.mid;
+      return palette.low;
+    }
+
+    function titleCase(str) {
+      return str.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    function wrapLabel(label) {
+      if (label.length <= 14) return label;
+      var mid = Math.floor(label.length / 2);
+      var spaceIdx = label.lastIndexOf(' ', mid);
+      if (spaceIdx <= 0) return label;
+      return [label.slice(0, spaceIdx), label.slice(spaceIdx + 1)];
+    }
+
+    function drawCriterionBars(canvasId, criteriaDict) {
+      var canvas = document.getElementById(canvasId);
+      if (!canvas || !window.Chart) return;
+      if (!criteriaDict || Object.keys(criteriaDict).length === 0) return;
+
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+        || (!document.documentElement.getAttribute('data-theme')
+            && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var axisColor = isDark ? 'rgba(143,138,126,0.8)' : 'rgba(107,102,96,0.85)';
+      var gridColor = isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)';
+      var labelColor = isDark ? '#d4cfc0' : '#3d3d3d';
+
+      var rawKeys = Object.keys(criteriaDict);
+      var labels = rawKeys.map(function (k) { return titleCase(k); });
+      var values = rawKeys.map(function (k) { return criteriaDict[k]; });
+      var colors = values.map(function (v) { return criterionBarColor(v, isDark); });
+
+      var descriptions = window.__revalRubricDescriptions || {};
+      var categoryKey = canvas.dataset.category;
+
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: values,
+            backgroundColor: colors,
+            borderColor: colors,
+            borderWidth: 1,
+            borderRadius: 3,
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { left: 8, right: 8 } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? '#17140f' : '#faf8f3',
+              titleColor: isDark ? '#f5f0e3' : '#1a1a1a',
+              bodyColor: isDark ? '#d4cfc0' : '#3d3d3d',
+              borderColor: isDark ? '#d47a47' : '#a85c32',
+              borderWidth: 1,
+              padding: 10,
+              displayColors: false,
+              titleFont: { family: 'Inter, sans-serif', size: 12, weight: '600' },
+              bodyFont: { family: 'Inter, sans-serif', size: 12, lineHeight: 1.4 },
+              callbacks: {
+                title: function (ctxs) {
+                  return titleCase(rawKeys[ctxs[0].dataIndex]);
+                },
+                label: function (ctx) {
+                  return 'score: ' + ctx.raw.toFixed(3);
+                },
+                afterBody: function (ctxs) {
+                  var criterionKey = rawKeys[ctxs[0].dataIndex];
+                  var catDescs = descriptions[categoryKey];
+                  var desc = catDescs && catDescs[criterionKey];
+                  return desc ? [desc] : [];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              min: 0,
+              max: 1,
+              ticks: {
+                color: axisColor,
+                font: { family: 'JetBrains Mono, monospace', size: 10 },
+                stepSize: 0.25,
+              },
+              grid: { color: gridColor },
+            },
+            y: {
+              ticks: {
+                color: labelColor,
+                font: { family: 'Inter, sans-serif', size: 12, weight: '500' },
+                autoSkip: false,
+                callback: function (value, index) {
+                  return wrapLabel(labels[index]);
+                },
+              },
+              grid: { display: false },
+            }
+          }
+        }
+      });
+    }
+
+    var aggregatedRubric = rowData.aggregated_rubric_scores || {};
+
+    // Wrap each chart call in its own try/catch so a Chart.js failure
+    // on one canvas doesn't prevent the others from rendering. Same
+    // crash-safety pattern as index.html.j2's renderAllCharts(). Emit
+    // at `error` severity so the Playwright `js_errors` fixture
+    // catches a silent degradation in CI — `console.warn` would
+    // render a blank canvas and leave the test suite green.
+    function drawAllCharts() {
+      try {
+        drawRadar();
+      } catch (e) {
+        console.error('drawRadar failed:', e);
+      }
+      try {
+        drawCriterionBars(
+          'criterionBars-figure_treatment',
+          aggregatedRubric.figure_treatment,
+        );
+      } catch (e) {
+        console.error('drawCriterionBars(figure_treatment) failed:', e);
+      }
+      try {
+        drawCriterionBars(
+          'criterionBars-issue_framing',
+          aggregatedRubric.issue_framing,
+        );
+      } catch (e) {
+        console.error('drawCriterionBars(issue_framing) failed:', e);
+      }
+    }
+
     if (window.Chart) {
-      drawRadar();
+      drawAllCharts();
     } else {
-      document.addEventListener('DOMContentLoaded', drawRadar);
+      document.addEventListener('DOMContentLoaded', drawAllCharts);
     }
   })();
 </script>

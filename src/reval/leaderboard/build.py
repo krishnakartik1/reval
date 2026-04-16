@@ -32,7 +32,9 @@ import shutil
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
+from statistics import median
 
+import yaml
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
 
@@ -96,6 +98,23 @@ class LeaderboardRow(BaseModel):
     #: model pages link to this if set.
     report_href: str | None = None
 
+    #: Median latency in ms across every `EvalResult.latency_ms` in the
+    #: run. `None` when no result recorded a latency — older showcase
+    #: entries written before the field existed, or runs where every
+    #: provider path failed to record it. The scatter chart on the
+    #: index page falls back to a 1-D strip plot when this is `None`.
+    latency_p50_ms: float | None = None
+
+    #: Per-category per-criterion mean scores, normalized to 0-1 from
+    #: the judge's raw 1-5 Likert output. Shape:
+    #: `{"figure_treatment": {"factual_accuracy": 0.86, ...},
+    #:   "issue_framing": {"perspective_coverage": 0.74, ...}}`.
+    #: Only `figure_treatment` and `issue_framing` populate this —
+    #: `argumentation_parity` has `rubric_scores` too but its dotted
+    #: key shape (`A.logic`, `B.logic`) does not fit a flat horizontal
+    #: bar chart, so it is excluded by whitelist.
+    aggregated_rubric_scores: dict[str, dict[str, float]] = Field(default_factory=dict)
+
 
 def load_rows(showcase_dir: Path) -> list[LeaderboardRow]:
     """Scan a showcase directory and return one row per `results.json`.
@@ -127,6 +146,7 @@ def load_rows(showcase_dir: Path) -> list[LeaderboardRow]:
             continue
 
         report_path = entry / "report.html"
+        raw_results = data.get("results") or []
         row = LeaderboardRow(
             slug=entry.name,
             model_id=data.get("model_id", "unknown"),
@@ -141,6 +161,8 @@ def load_rows(showcase_dir: Path) -> list[LeaderboardRow]:
             timestamp=data.get("timestamp"),
             git_sha=data.get("git_sha"),
             report_href=f"reports/{entry.name}.html" if report_path.exists() else None,
+            latency_p50_ms=_median_latency(raw_results),
+            aggregated_rubric_scores=_aggregate_rubric_scores(raw_results),
         )
         rows.append(row)
 
@@ -158,6 +180,113 @@ def _collect_categories(rows: list[LeaderboardRow]) -> list[str]:
     for row in rows:
         categories.update(row.category_scores.keys())
     return sorted(categories)
+
+
+#: Categories whose `rubric_scores` flatten cleanly into a per-criterion
+#: horizontal bar. `argumentation_parity` also populates `rubric_scores`
+#: but with dotted `A.<metric>` / `B.<metric>` keys (see
+#: `reval.scoring.parity.score_argumentation_parity`), so it is excluded
+#: by whitelist — a parity-shaped panel is a v2 follow-up.
+_RUBRIC_BAR_CATEGORIES = frozenset({"figure_treatment", "issue_framing"})
+
+
+def _median_latency(results: list[dict]) -> float | None:
+    """Median of `latency_ms` across raw result dicts that recorded it.
+
+    Operates on raw result dicts rather than typed `EvalResult`, so it
+    plugs into `load_rows()`'s existing lazy JSON parse (results.json
+    is never validated through the full `BenchmarkRun` model).
+
+    Tolerates three sparsity modes:
+      - result has `latency_ms = None` (recent runs where the field was
+        left unpopulated on a failure branch)
+      - result omits the `latency_ms` key entirely (legacy runs written
+        before the field was introduced)
+      - empty `results` list
+
+    In all three cases the function returns `None`, which the scatter
+    chart renders as a "latency data not available" fallback.
+    """
+    latencies = [
+        r["latency_ms"] for r in results if isinstance(r.get("latency_ms"), int | float)
+    ]
+    if not latencies:
+        return None
+    return float(median(latencies))
+
+
+def _aggregate_rubric_scores(
+    results: list[dict],
+) -> dict[str, dict[str, float]]:
+    """Per-category per-criterion mean scores, normalized to 0-1.
+
+    The LLM judge emits raw 1-5 Likert ints into `rubric_scores` (see
+    `reval.scoring.judge.score_with_judge` line 169). This helper
+    normalizes each score via `(raw - 1) / 4` so the leaderboard charts
+    share a 0-1 palette with category scores.
+
+    Only `figure_treatment` and `issue_framing` are aggregated
+    (`_RUBRIC_BAR_CATEGORIES`). `argumentation_parity` is excluded by
+    whitelist because its dotted-key shape does not fit a flat
+    horizontal bar chart — a parity panel is a v2 task.
+
+    Out-of-range raw scores (< 1 or > 5) are dropped with a warning log
+    rather than clamped, so judge drift or parser coercion bugs surface
+    instead of hiding as silent green bars. Non-numeric values are
+    skipped the same way.
+
+    Categories with zero valid scores are absent from the return value
+    (not empty-dict), so the frontend can use
+    `cat in aggregated_rubric_scores` as its "has data" predicate.
+
+    Known limitation: the `figure_treatment` rubric_scores dict stored
+    on a paired result reflects ONLY side A's response. See
+    `reval.runner.EvalRunner._run_figure_treatment`, which currently
+    constructs the merged result with
+    `rubric_scores=result_a.rubric_scores` — grep for that assignment
+    if you need to find the exact line in a future refactor. The
+    aggregate therefore measures "how the model treats Figure A
+    across paired prompts", not a balanced Figure-A/Figure-B mean.
+    Fixing the runner to emit a merged rubric is a v2 follow-up.
+    """
+    buckets: dict[str, dict[str, list[float]]] = {}
+    for r in results:
+        category = r.get("category")
+        if category not in _RUBRIC_BAR_CATEGORIES:
+            continue
+        rubric_scores = r.get("rubric_scores") or {}
+        if not rubric_scores:
+            continue
+        bucket = buckets.setdefault(category, {})
+        for criterion, raw in rubric_scores.items():
+            # bool is a subclass of int in Python — check it first so a
+            # judge that accidentally returns True/False doesn't sneak
+            # through the numeric arm as 1.0 / 0.0.
+            if isinstance(raw, bool):
+                continue
+            if not isinstance(raw, int | float):
+                continue
+            raw_f = float(raw)
+            if not (1.0 <= raw_f <= 5.0):
+                logger.warning(
+                    "rubric_scores out-of-range: category=%s "
+                    "criterion=%s raw=%s — dropped from aggregate",
+                    category,
+                    criterion,
+                    raw,
+                )
+                continue
+            normalized = (raw_f - 1.0) / 4.0
+            bucket.setdefault(criterion, []).append(normalized)
+
+    return {
+        category: {
+            criterion: sum(values) / len(values)
+            for criterion, values in criteria.items()
+        }
+        for category, criteria in buckets.items()
+        if criteria
+    }
 
 
 def _average_category_scores(
@@ -226,12 +355,70 @@ def get_style_css() -> str:
     return tokens + "\n\n" + style
 
 
+CRITERION_COLUMNS: list[tuple[str, str]] = [
+    ("figure_treatment", "factual_accuracy"),
+    ("figure_treatment", "tone_balance"),
+    ("figure_treatment", "context_fairness"),
+    ("figure_treatment", "source_attribution"),
+    ("issue_framing", "perspective_coverage"),
+    ("issue_framing", "framing_neutrality"),
+    ("issue_framing", "evidence_balance"),
+    ("issue_framing", "stakeholder_representation"),
+]
+
+CATEGORY_DESCRIPTIONS: dict[str, str] = {
+    "figure_treatment": "How fairly and accurately the model treats political figures.",
+    "issue_framing": "How balanced the model is when framing policy issues.",
+    "policy_attribution": "Similarity between model answers and authoritative policy positions.",
+    "argumentation_parity": "Symmetry between pro/con arguments the model generates.",
+}
+
+
+def _load_rubric_descriptions(rubrics_dir: Path | None) -> dict[str, dict[str, str]]:
+    """Return ``{category: {criterion: description}}`` from rubric YAMLs.
+
+    Best-effort: returns ``{}`` if *rubrics_dir* doesn't exist (wheel
+    install), logs a warning and skips any YAML with a malformed
+    ``criteria`` entry, and never raises.  Skips files whose stem starts
+    with ``_`` to avoid noisy warnings from non-rubric helper files.
+    """
+    if rubrics_dir is None or not rubrics_dir.is_dir():
+        return {}
+
+    descriptions: dict[str, dict[str, str]] = {}
+    for yaml_path in sorted(rubrics_dir.glob("*.yaml")):
+        if yaml_path.stem.startswith("_"):
+            continue
+        try:
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+            criteria = data.get("criteria") if isinstance(data, dict) else None
+            if not isinstance(criteria, list):
+                logger.warning("Skipping %s: no 'criteria' list found", yaml_path.name)
+                continue
+            cat: dict[str, str] = {}
+            for entry in criteria:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("name")
+                desc = entry.get("description")
+                if isinstance(name, str) and isinstance(desc, str):
+                    cat[name] = desc
+            if cat:
+                descriptions[yaml_path.stem] = cat
+        except Exception:
+            logger.warning(
+                "Failed to parse %s, skipping", yaml_path.name, exc_info=True
+            )
+    return descriptions
+
+
 def build(
     showcase_dir: Path,
     output_dir: Path,
     include_reports: bool = True,
     dataset_dir: Path | None = None,
     docs_dir: Path | None = None,
+    rubrics_dir: Path | None = None,
 ) -> BuildReport:
     """Render the static leaderboard site.
 
@@ -268,6 +455,7 @@ def build(
     rows = load_rows(showcase_dir)
     categories = _collect_categories(rows)
     avg_scores = _average_category_scores(rows, categories)
+    rubric_descriptions = _load_rubric_descriptions(rubrics_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "data").mkdir(exist_ok=True)
@@ -301,6 +489,9 @@ def build(
             rows=rows,
             categories=categories,
             leaderboard_data=leaderboard_data,
+            rubric_descriptions=rubric_descriptions,
+            category_descriptions=CATEGORY_DESCRIPTIONS,
+            criterion_columns=CRITERION_COLUMNS,
         ),
         encoding="utf-8",
     )
@@ -321,6 +512,8 @@ def build(
                 categories=categories,
                 row_data=row.model_dump(mode="json"),
                 avg_data=avg_scores,
+                rubric_descriptions=rubric_descriptions,
+                category_descriptions=CATEGORY_DESCRIPTIONS,
             ),
             encoding="utf-8",
         )
