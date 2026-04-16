@@ -109,3 +109,49 @@ async def test_acomplete_reraises_rate_limit() -> None:
 
 def test_provider_name_is_openai() -> None:
     assert OpenAIProvider.provider_name == "openai"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model_id", ["gpt-5", "gpt-5.4", "gpt-5.4-mini"])
+async def test_acomplete_uses_max_completion_tokens_for_gpt5(model_id: str) -> None:
+    """GPT-5 family rejects max_tokens; we must send max_completion_tokens."""
+    client = _mock_client(_mock_chat_response("ok", 5, 1))
+    provider = OpenAIProvider(model_id=model_id, client=client)
+
+    await provider.acomplete(system=None, user="hi", max_tokens=512)
+
+    call = client.chat.completions.create.call_args
+    assert "max_completion_tokens" in call.kwargs
+    assert call.kwargs["max_completion_tokens"] == 512
+    assert "max_tokens" not in call.kwargs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model_id", ["o1", "o1-mini", "o3", "o3-mini", "o4-mini"])
+async def test_acomplete_uses_max_completion_tokens_for_o_series(
+    model_id: str,
+) -> None:
+    """o-series reasoning models also require max_completion_tokens."""
+    client = _mock_client(_mock_chat_response("ok", 5, 1))
+    provider = OpenAIProvider(model_id=model_id, client=client)
+
+    await provider.acomplete(system=None, user="hi", max_tokens=1024)
+
+    call = client.chat.completions.create.call_args
+    assert "max_completion_tokens" in call.kwargs
+    assert call.kwargs["max_completion_tokens"] == 1024
+    assert "max_tokens" not in call.kwargs
+
+
+@pytest.mark.asyncio
+async def test_acomplete_uses_max_tokens_for_legacy_models() -> None:
+    """Legacy models (gpt-4o, gpt-3.5-turbo) still use max_tokens."""
+    client = _mock_client(_mock_chat_response("ok", 5, 1))
+    provider = OpenAIProvider(model_id="gpt-4o", client=client)
+
+    await provider.acomplete(system=None, user="hi", max_tokens=2048)
+
+    call = client.chat.completions.create.call_args
+    assert "max_tokens" in call.kwargs
+    assert call.kwargs["max_tokens"] == 2048
+    assert "max_completion_tokens" not in call.kwargs

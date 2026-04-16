@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-4o"
 
+# Models that require `max_completion_tokens` instead of the legacy `max_tokens`.
+# Covers o-series reasoning models and GPT-5+.
+_MAX_COMPLETION_TOKENS_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _uses_max_completion_tokens(model_id: str) -> bool:
+    return any(model_id.startswith(p) for p in _MAX_COMPLETION_TOKENS_PREFIXES)
+
 
 class OpenAIProvider(LLMProvider):
     """Async OpenAI Chat Completions provider with optional `base_url`.
@@ -59,10 +67,15 @@ class OpenAIProvider(LLMProvider):
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user})
 
+        token_kwarg = (
+            "max_completion_tokens"
+            if _uses_max_completion_tokens(self.model_id)
+            else "max_tokens"
+        )
         try:
             response = await self._client.chat.completions.create(
                 model=self.model_id,
-                max_tokens=max_tokens,
+                **{token_kwarg: max_tokens},
                 messages=messages,
             )
         except openai.RateLimitError as exc:
