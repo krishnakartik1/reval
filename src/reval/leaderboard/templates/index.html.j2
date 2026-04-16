@@ -253,60 +253,74 @@
     {% endif %}
   </section>
 
-  {# ── SCATTER: overall_score × median latency (Pareto) ─────── #}
+  {# ── CHART A: Overall Score Ranking ──────────────────────── #}
 
-  {% if rows|length > 0 %}
+  {% if rows and rows | selectattr('overall_score') | list %}
   <section class="mt-24 reveal reveal-4">
     <div class="flex items-baseline justify-between mb-4">
-      <div class="eyebrow">Speed vs quality</div>
+      <div class="eyebrow">Overall score ranking</div>
       <div class="text-[11px]" style="color: var(--fg-dim);">
-        overall score × median latency (log)
+        aggregate score across all ethical categories
       </div>
     </div>
     <div class="scatter-card">
       <div style="height: 320px;">
-        <canvas id="scatterChart"
+        <canvas id="overallBarChart"
                 role="img"
-                aria-label="Scatter plot of overall score against median latency. See the leaderboard table above for the same data in accessible form."></canvas>
+                aria-label="Horizontal bar chart ranking models by overall score. See the leaderboard table above for the same data in accessible form."></canvas>
       </div>
-      <p id="scatterFallbackNote"
-         class="mt-3 text-[11px] leading-[1.6]"
-         style="color: var(--fg-dim); display: none;">
-        Latency data not available for any run in this view — showing
-        overall scores as a 1-D strip instead.
-      </p>
-      <p class="mt-3 text-[11px] leading-[1.6]" style="color: var(--fg-dim);">
-        Points on the <span style="color: var(--fg);">dashed frontier</span> are
-        Pareto-optimal — no other run is both faster and higher-scoring.
-        Points below the frontier are strictly dominated by at least one
-        alternative.
-      </p>
     </div>
   </section>
   {% endif %}
 
-  {# ── HEATMAP: model × category ────────────────────────────── #}
+  {# ── CHART B: Category Strength Profile ────────────────── #}
 
   {% if rows|length > 0 %}
-  <section class="mt-24 reveal reveal-4" aria-labelledby="heatmap-title">
+  <section class="mt-24 reveal reveal-4">
     <div class="flex items-baseline justify-between mb-4">
-      <div class="eyebrow" id="heatmap-title">Category heatmap</div>
+      <div class="eyebrow">Category strength profile</div>
       <div class="text-[11px]" style="color: var(--fg-dim);">
-        click a row to open the per-model page
+        per-category scores for each model
+      </div>
+    </div>
+    <div class="scatter-card">
+      <div style="height: 400px;">
+        <canvas id="categoryGroupedBar"
+                role="img"
+                aria-label="Grouped horizontal bar chart comparing models across ethical categories."></canvas>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ── CHART C: Rubric Criterion Heatmap ─────────────────── #}
+
+  {% if rows and rows | selectattr('aggregated_rubric_scores') | list %}
+  <section class="mt-24 reveal reveal-4" aria-labelledby="criterion-heatmap-title">
+    <div class="flex items-baseline justify-between mb-4">
+      <div class="eyebrow" id="criterion-heatmap-title">Rubric criterion fingerprint</div>
+      <div class="text-[11px]" style="color: var(--fg-dim);">
+        per-criterion scores (0–1, Likert-normalized) · click a row to open the per-model page
       </div>
     </div>
     <div class="heatmap-wrap">
-      <div class="heatmap-grid"
+      <div class="criterion-heatmap-grid"
            role="table"
-           aria-label="Model-by-category score heatmap">
-        <div role="row" class="heatmap-header">
-          <div role="columnheader" class="heatmap-cell-label">Model</div>
-          <template x-for="cat in categoryKeys" :key="cat">
-            <div role="columnheader"
-                 class="heatmap-cell"
-                 x-text="cat"></div>
-          </template>
+           aria-label="Model-by-criterion score heatmap">
+        {# Group header: category spans #}
+        <div role="row" class="criterion-heatmap-group-header">
+          <div></div>
+          <div style="grid-column: span 4;">Figure Treatment</div>
+          <div style="grid-column: span 4;">Issue Framing</div>
         </div>
+        {# Sub-header: criterion names #}
+        <div role="row" class="criterion-heatmap-sub-header">
+          <div role="columnheader" class="heatmap-cell-label">Model</div>
+          {% for cat, criterion in criterion_columns %}
+          <div role="columnheader">{{ criterion | replace("_", " ") | title }}</div>
+          {% endfor %}
+        </div>
+        {# Data rows #}
         <template x-for="row in sortedFilteredRows" :key="row.slug">
           <div role="row"
                class="heatmap-row"
@@ -315,16 +329,41 @@
             <div role="rowheader"
                  class="heatmap-cell-label"
                  x-text="row.model_id"></div>
-            <template x-for="cat in categoryKeys" :key="cat">
-              <div role="cell"
-                   class="heatmap-cell"
-                   :class="scoreColor(row.category_scores[cat])"
-                   :title="cat + ': ' + fmtScore(row.category_scores[cat])"
-                   x-text="fmtScore(row.category_scores[cat])"></div>
-            </template>
+            {% for cat, criterion in criterion_columns %}
+            <div role="cell"
+                 class="heatmap-cell"
+                 :class="criterionScoreColor(row.aggregated_rubric_scores && row.aggregated_rubric_scores['{{ cat }}'] && row.aggregated_rubric_scores['{{ cat }}']['{{ criterion }}'])"
+                 :title="criterionTooltip('{{ cat }}', '{{ criterion }}', row.aggregated_rubric_scores)"
+                 x-text="fmtScore(row.aggregated_rubric_scores && row.aggregated_rubric_scores['{{ cat }}'] && row.aggregated_rubric_scores['{{ cat }}']['{{ criterion }}'])"></div>
+            {% endfor %}
           </div>
         </template>
       </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ── CHART D: Top-5 Category Radar ─────────────────────── #}
+
+  {% if rows|length > 0 %}
+  <section class="mt-24 reveal reveal-4">
+    <div class="flex items-baseline justify-between mb-4">
+      <div class="eyebrow">Top-5 ethical profile</div>
+      <div class="text-[11px]" style="color: var(--fg-dim);">
+        category scores for the top 5 models by overall score
+      </div>
+    </div>
+    <div class="scatter-card">
+      <div style="height: 380px;">
+        <canvas id="radarChart"
+                role="img"
+                aria-label="Radar chart overlaying the top 5 models' scores across four ethical categories."></canvas>
+      </div>
+      <p x-show="sortedFilteredRows.length === 0"
+         class="mt-3 text-[11px] leading-[1.6]"
+         style="color: var(--fg-dim);">
+        No models match the current filters.
+      </p>
     </div>
   </section>
   {% endif %}
@@ -339,8 +378,10 @@
 
 </div>
 
-{# ── Embedded row data for the Alpine component ─────────────── #}
+{# ── Embedded data for the Alpine component ────────────────── #}
 <script id="leaderboard-data" type="application/json">{{ leaderboard_data | tojson | safe }}</script>
+<script id="rubric-descriptions" type="application/json">{{ rubric_descriptions | tojson | safe }}</script>
+<script id="category-descriptions" type="application/json">{{ category_descriptions | tojson | safe }}</script>
 
 <script>
   function leaderboardApp() {
@@ -361,10 +402,37 @@
       activeProviders: [],
       activeJudges: [],
 
+      _rubricDescriptions: {},
+      _categoryDescriptions: {},
+
       init() {
+        try {
+          this._rubricDescriptions = JSON.parse(
+            document.getElementById('rubric-descriptions').textContent
+          );
+        } catch (e) { this._rubricDescriptions = {}; }
+        try {
+          this._categoryDescriptions = JSON.parse(
+            document.getElementById('category-descriptions').textContent
+          );
+        } catch (e) { this._categoryDescriptions = {}; }
+
         this.$nextTick(() => {
-          this.renderScatter();
+          this.renderAllCharts();
           if (window.lucide) lucide.createIcons();
+        });
+
+        var self = this;
+        ['search', 'sortKey', 'sortDir'].forEach(function (prop) {
+          self.$watch(prop, function () {
+            self.$nextTick(function () { self.renderAllCharts(); });
+          });
+        });
+        this.$watch('activeProviders', function () {
+          self.$nextTick(function () { self.renderAllCharts(); });
+        });
+        this.$watch('activeJudges', function () {
+          self.$nextTick(function () { self.renderAllCharts(); });
         });
       },
 
@@ -466,209 +534,325 @@
         return Number(score).toFixed(3);
       },
 
-      /**
-       * Compute the Pareto frontier for top-left dominance
-       * (lower x = faster is better, higher y = better score).
-       *
-       * Algorithm: sort ascending by x, sweep keeping each point
-       * whose y is STRICTLY GREATER than every prior kept point's y.
-       * Ties on (x, y) resolve to the first-seen — intentional so
-       * the frontier is a single connected line, not a staircase
-       * with duplicate rungs.
-       *
-       * Exposed on the component scope so the Playwright UI suite
-       * can call it directly via page.evaluate() rather than
-       * pixel-scraping a Chart.js canvas.
-       */
-      paretoFrontier(points) {
-        if (!points || points.length === 0) return [];
-        var sorted = points.slice().sort(function (a, b) {
-          if (a.x !== b.x) return a.x - b.x;
-          return b.y - a.y; // tiebreak: higher-y first so it wins
-        });
-        var kept = [];
-        var bestY = -Infinity;
-        for (var i = 0; i < sorted.length; i++) {
-          if (sorted[i].y > bestY) {
-            kept.push(sorted[i]);
-            bestY = sorted[i].y;
-          }
-        }
-        return kept;
+      criterionScoreColor(score) {
+        if (score == null) return 'score-none';
+        if (score >= 0.875) return 'score-high';
+        if (score >= 0.625) return 'score-mid';
+        return 'score-low';
       },
 
-      renderScatter() {
-        var canvas = document.getElementById('scatterChart');
-        if (!canvas || !window.Chart) return;
-        try {
-          // Idempotent — destroy any prior Chart bound to this canvas.
-          var existing = Chart.getChart(canvas);
-          if (existing) existing.destroy();
-          var rows = this.allRows.filter(function (r) {
-            return r.overall_score != null;
-          });
-          if (rows.length === 0) return;
+      criterionTooltip(cat, criterion, rubricScores) {
+        var score = rubricScores && rubricScores[cat] && rubricScores[cat][criterion];
+        var display = criterion.replace(/_/g, ' ');
+        var desc = this._rubricDescriptions[cat] && this._rubricDescriptions[cat][criterion];
+        var parts = display + ': ' + this.fmtScore(score);
+        if (desc) parts += ' — ' + desc;
+        return parts;
+      },
 
-          var isDark = document.documentElement.getAttribute('data-theme') === 'dark'
-            || (!document.documentElement.getAttribute('data-theme')
-                && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      _isDark() {
+        return document.documentElement.getAttribute('data-theme') === 'dark'
+          || (!document.documentElement.getAttribute('data-theme')
+              && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      },
 
-          var axisColor = isDark ? 'rgba(143,138,126,0.8)' : 'rgba(107,102,96,0.85)';
-          var gridColor = isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)';
-          var accent    = isDark ? '#d47a47' : '#a85c32';
-          var frontierColor = isDark ? 'rgba(212,207,192,0.55)' : 'rgba(90,85,80,0.45)';
+      _chartColors() {
+        var isDark = this._isDark();
+        return {
+          accent:    isDark ? '#d47a47' : '#a85c32',
+          axisColor: isDark ? 'rgba(143,138,126,0.8)' : 'rgba(107,102,96,0.85)',
+          gridColor: isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)',
+          labelColor: isDark ? '#d4cfc0' : '#3d3d3d',
+          tooltipBg: isDark ? '#17140f' : '#faf8f3',
+          tooltipTitle: isDark ? '#f5f0e3' : '#1a1a1a',
+          tooltipBody: isDark ? '#d4cfc0' : '#3d3d3d',
+        };
+      },
 
-          // Split rows into those with and without latency data.
-          // Log scale requires strictly positive x, so filter out 0 and
-          // negative values too — Chart.js's logarithmic axis crashes
-          // on log(0) = -Infinity.
-          var rowsWithLatency = rows.filter(function (r) {
-            return typeof r.latency_p50_ms === 'number' && r.latency_p50_ms > 0;
-          });
-          var fallbackMode = rowsWithLatency.length === 0;
+      _categoryPalette() {
+        var isDark = this._isDark();
+        return {
+          figure_treatment:     isDark ? '#d47a47'              : '#a85c32',
+          issue_framing:        isDark ? '#6ba3be'              : '#3a7a96',
+          policy_attribution:   isDark ? '#8fb573'              : '#5e8a42',
+          argumentation_parity: isDark ? '#c4a0d4'              : '#8a5ea0',
+        };
+      },
 
-          var points, datasets, xScale;
-          if (fallbackMode) {
-            // 1-D strip plot on the y-axis only, constant x with jitter.
-            var jitterRows = rows.slice();
-            points = jitterRows.map(function (r, i) {
-              return {
-                x: 0.5 + ((i % 5) - 2) * 0.08, // horizontal spread
-                y: r.overall_score,
-                label: r.model_id,
-                latencyLabel: 'n/a',
-              };
-            });
-            datasets = [{
-              data: points,
-              backgroundColor: accent + 'cc',
-              borderColor: accent,
-              borderWidth: 1.2,
-              pointRadius: 6,
-              pointHoverRadius: 9,
-            }];
-            xScale = {
-              type: 'linear',
-              min: 0,
-              max: 1,
-              display: false,
-            };
-          } else {
-            points = rowsWithLatency.map(function (r) {
-              return {
-                x: r.latency_p50_ms,
-                y: r.overall_score,
-                label: r.model_id,
-                latencyLabel: (r.latency_p50_ms / 1000).toFixed(2) + ' s',
-              };
-            });
-            var frontier = this.paretoFrontier(points);
-            datasets = [
-              {
-                // Pareto frontier rendered as a dashed line UNDERNEATH
-                // the points (Chart.js draws datasets in order). Listed
-                // first so points layer on top.
-                type: 'line',
-                data: frontier,
-                borderColor: frontierColor,
-                borderDash: [4, 4],
-                borderWidth: 1.3,
-                pointRadius: 0,
-                fill: false,
-                tension: 0,
-              },
-              {
-                data: points,
-                backgroundColor: accent + 'cc',
-                borderColor: accent,
-                borderWidth: 1.2,
-                pointRadius: 6,
-                pointHoverRadius: 9,
-              },
-            ];
-            xScale = {
-              type: 'logarithmic',
-              title: {
-                display: true,
-                text: 'median latency (ms)',
-                color: axisColor,
-                font: { family: 'Inter', size: 10, weight: '500' },
-              },
-              ticks: {
-                color: axisColor,
-                font: { family: 'JetBrains Mono, monospace', size: 10 },
-              },
-              grid: { color: gridColor },
-            };
-          }
+      renderAllCharts() {
+        if (!window.Chart) return;
+        try { this.renderOverallBar(); }
+        catch (e) { console.error('renderOverallBar failed:', e); }
+        try { this.renderCategoryGroupedBar(); }
+        catch (e) { console.error('renderCategoryGroupedBar failed:', e); }
+        try { this.renderTop5Radar(); }
+        catch (e) { console.error('renderTop5Radar failed:', e); }
+      },
 
-          new Chart(canvas.getContext('2d'), {
-            type: 'scatter',
-            data: { datasets: datasets },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  filter: function (ctx) {
-                    // Hide tooltips on the Pareto line segments themselves —
-                    // only show on the actual data points.
-                    return ctx.dataset.type !== 'line';
-                  },
-                  backgroundColor: isDark ? '#17140f' : '#faf8f3',
-                  titleColor: isDark ? '#f5f0e3' : '#1a1a1a',
-                  bodyColor: isDark ? '#d4cfc0' : '#3d3d3d',
-                  borderColor: accent,
-                  borderWidth: 1,
-                  padding: 12,
-                  titleFont: { family: 'JetBrains Mono, monospace', size: 12, weight: '500' },
-                  bodyFont: { family: 'Inter, sans-serif', size: 11 },
-                  callbacks: {
-                    title: function (items) { return items[0].raw.label; },
-                    label: function (ctx) {
-                      return 'overall ' + ctx.raw.y.toFixed(3) + ' · p50 ' + ctx.raw.latencyLabel;
-                    }
-                  }
-                }
-              },
-              scales: {
-                x: xScale,
-                y: {
-                  title: {
-                    display: true,
-                    text: 'overall score',
-                    color: axisColor,
-                    font: { family: 'Inter', size: 10, weight: '500' },
-                  },
-                  min: 0.5,
-                  max: 1,
-                  ticks: {
-                    color: axisColor,
-                    font: { family: 'JetBrains Mono, monospace', size: 10 },
-                  },
-                  grid: { color: gridColor },
+      renderOverallBar() {
+        var canvas = document.getElementById('overallBarChart');
+        if (!canvas) return;
+        var prev = Chart.getChart(canvas);
+        if (prev) prev.destroy();
+
+        var c = this._chartColors();
+        var rows = this.sortedFilteredRows
+          .filter(function (r) { return r.overall_score != null; })
+          .slice()
+          .sort(function (a, b) { return a.overall_score - b.overall_score; });
+
+        new Chart(canvas.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: rows.map(function (r) { return r.model_id; }),
+            datasets: [{
+              data: rows.map(function (r) { return r.overall_score; }),
+              backgroundColor: c.accent + 'cc',
+              borderColor: c.accent,
+              borderWidth: 1,
+              borderRadius: 3,
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { left: 8, right: 8 } },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: c.tooltipBg,
+                titleColor: c.tooltipTitle,
+                bodyColor: c.tooltipBody,
+                borderColor: c.accent,
+                borderWidth: 1,
+                padding: 10,
+                displayColors: false,
+                titleFont: { family: 'Inter, sans-serif', size: 11, weight: '600' },
+                bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+                callbacks: {
+                  label: function (ctx) { return 'score: ' + ctx.raw.toFixed(3); },
                 }
               }
+            },
+            scales: {
+              x: {
+                min: 0, max: 1,
+                ticks: {
+                  color: c.axisColor,
+                  font: { family: 'JetBrains Mono, monospace', size: 10 },
+                  stepSize: 0.25,
+                },
+                grid: { color: c.gridColor },
+              },
+              y: {
+                ticks: {
+                  color: c.labelColor,
+                  font: { family: 'Inter, sans-serif', size: 11, weight: '500' },
+                  autoSkip: false,
+                },
+                grid: { display: false },
+              }
             }
-          });
-
-          // Expose fallback state to the DOM so tests (and the page
-          // subtitle) can detect it without reading the Chart instance.
-          canvas.setAttribute('data-fallback', fallbackMode ? 'true' : 'false');
-          var fallbackNote = document.getElementById('scatterFallbackNote');
-          if (fallbackNote) {
-            fallbackNote.style.display = fallbackMode ? '' : 'none';
           }
-        } catch (err) {
-          // Swallow Chart.js init errors so Alpine's init() chain
-          // (and therefore the heatmap, which also binds to this
-          // component) continues to mount. Emit at `error` severity
-          // so the Playwright `js_errors` fixture catches a silent
-          // degradation in CI — without `error`, a broken scatter
-          // renders blank and no test notices.
-          console.error('renderScatter failed:', err);
-        }
+        });
+      },
+
+      renderCategoryGroupedBar() {
+        var canvas = document.getElementById('categoryGroupedBar');
+        if (!canvas) return;
+        var prev = Chart.getChart(canvas);
+        if (prev) prev.destroy();
+
+        var c = this._chartColors();
+        var palette = this._categoryPalette();
+        var catDescs = this._categoryDescriptions;
+        var rows = this.sortedFilteredRows;
+        var labels = rows.map(function (r) { return r.model_id; });
+        var cats = this.categoryKeys;
+
+        var datasets = cats.map(function (cat) {
+          return {
+            label: cat.replace(/_/g, ' '),
+            data: rows.map(function (r) { return r.category_scores[cat] ?? null; }),
+            backgroundColor: (palette[cat] || c.accent) + 'aa',
+            borderColor: palette[cat] || c.accent,
+            borderWidth: 1,
+            borderRadius: 2,
+          };
+        });
+
+        new Chart(canvas.getContext('2d'), {
+          type: 'bar',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { left: 8, right: 8 } },
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                  color: c.labelColor,
+                  font: { family: 'Inter, sans-serif', size: 10 },
+                  boxWidth: 12,
+                  padding: 12,
+                }
+              },
+              tooltip: {
+                backgroundColor: c.tooltipBg,
+                titleColor: c.tooltipTitle,
+                bodyColor: c.tooltipBody,
+                borderColor: c.accent,
+                borderWidth: 1,
+                padding: 10,
+                displayColors: false,
+                titleFont: { family: 'Inter, sans-serif', size: 11, weight: '600' },
+                bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+                callbacks: {
+                  title: function (items) {
+                    var raw = items[0];
+                    return labels[raw.dataIndex] + ' · ' + raw.dataset.label;
+                  },
+                  label: function (ctx) {
+                    return 'score: ' + (ctx.raw != null ? ctx.raw.toFixed(3) : '—');
+                  },
+                  afterBody: function (items) {
+                    var catKey = cats[items[0].datasetIndex];
+                    var desc = catDescs[catKey];
+                    return desc ? [desc] : [];
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                min: 0, max: 1,
+                ticks: {
+                  color: c.axisColor,
+                  font: { family: 'JetBrains Mono, monospace', size: 10 },
+                  stepSize: 0.25,
+                },
+                grid: { color: c.gridColor },
+              },
+              y: {
+                ticks: {
+                  color: c.labelColor,
+                  font: { family: 'Inter, sans-serif', size: 11, weight: '500' },
+                  autoSkip: false,
+                },
+                grid: { display: false },
+              }
+            }
+          }
+        });
+      },
+
+      renderTop5Radar() {
+        var canvas = document.getElementById('radarChart');
+        if (!canvas) return;
+        var prev = Chart.getChart(canvas);
+        if (prev) prev.destroy();
+
+        var c = this._chartColors();
+        var isDark = this._isDark();
+        var catDescs = this._categoryDescriptions;
+        var cats = this.categoryKeys;
+
+        var top5 = this.sortedFilteredRows
+          .filter(function (r) { return r.overall_score != null; })
+          .slice()
+          .sort(function (a, b) {
+            if (b.overall_score !== a.overall_score) return b.overall_score - a.overall_score;
+            return (a.model_id || '').localeCompare(b.model_id || '');
+          })
+          .slice(0, 5);
+
+        if (top5.length === 0) return;
+
+        var radarPalette = isDark
+          ? ['#d47a47', '#6ba3be', '#8fb573', '#c4a0d4', '#e0c87a']
+          : ['#a85c32', '#3a7a96', '#5e8a42', '#8a5ea0', '#b89a2e'];
+
+        var datasets = top5.map(function (row, i) {
+          var color = radarPalette[i % radarPalette.length];
+          return {
+            label: row.model_id,
+            data: cats.map(function (cat) { return row.category_scores[cat] ?? 0; }),
+            backgroundColor: color + '59',
+            borderColor: color,
+            borderWidth: 1.5,
+            pointRadius: 3,
+            pointBackgroundColor: color,
+          };
+        });
+
+        new Chart(canvas.getContext('2d'), {
+          type: 'radar',
+          data: {
+            labels: cats.map(function (cat) { return cat.replace(/_/g, ' '); }),
+            datasets: datasets,
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                position: 'right',
+                labels: {
+                  color: c.labelColor,
+                  font: { family: 'Inter, sans-serif', size: 10 },
+                  boxWidth: 12,
+                  padding: 10,
+                }
+              },
+              tooltip: {
+                backgroundColor: c.tooltipBg,
+                titleColor: c.tooltipTitle,
+                bodyColor: c.tooltipBody,
+                borderColor: c.accent,
+                borderWidth: 1,
+                padding: 10,
+                displayColors: false,
+                titleFont: { family: 'Inter, sans-serif', size: 11, weight: '600' },
+                bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+                callbacks: {
+                  title: function (items) {
+                    return items[0].dataset.label + ' · ' + cats[items[0].dataIndex].replace(/_/g, ' ');
+                  },
+                  label: function (ctx) {
+                    return 'score: ' + ctx.raw.toFixed(3);
+                  },
+                  afterBody: function (items) {
+                    var catKey = cats[items[0].dataIndex];
+                    var desc = catDescs[catKey];
+                    return desc ? [desc] : [];
+                  }
+                }
+              }
+            },
+            scales: {
+              r: {
+                min: 0, max: 1,
+                ticks: {
+                  color: c.axisColor,
+                  font: { family: 'JetBrains Mono, monospace', size: 9 },
+                  stepSize: 0.25,
+                  backdropColor: 'transparent',
+                },
+                pointLabels: {
+                  color: c.labelColor,
+                  font: { family: 'Inter, sans-serif', size: 11, weight: '500' },
+                },
+                grid: { color: c.gridColor },
+                angleLines: { color: c.gridColor },
+              }
+            }
+          }
+        });
       }
     };
   }

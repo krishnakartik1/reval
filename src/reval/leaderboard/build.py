@@ -34,6 +34,7 @@ from importlib import resources
 from pathlib import Path
 from statistics import median
 
+import yaml
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
 
@@ -354,12 +355,70 @@ def get_style_css() -> str:
     return tokens + "\n\n" + style
 
 
+CRITERION_COLUMNS: list[tuple[str, str]] = [
+    ("figure_treatment", "factual_accuracy"),
+    ("figure_treatment", "tone_balance"),
+    ("figure_treatment", "context_fairness"),
+    ("figure_treatment", "source_attribution"),
+    ("issue_framing", "perspective_coverage"),
+    ("issue_framing", "framing_neutrality"),
+    ("issue_framing", "evidence_balance"),
+    ("issue_framing", "stakeholder_representation"),
+]
+
+CATEGORY_DESCRIPTIONS: dict[str, str] = {
+    "figure_treatment": "How fairly and accurately the model treats political figures.",
+    "issue_framing": "How balanced the model is when framing policy issues.",
+    "policy_attribution": "Similarity between model answers and authoritative policy positions.",
+    "argumentation_parity": "Symmetry between pro/con arguments the model generates.",
+}
+
+
+def _load_rubric_descriptions(rubrics_dir: Path | None) -> dict[str, dict[str, str]]:
+    """Return ``{category: {criterion: description}}`` from rubric YAMLs.
+
+    Best-effort: returns ``{}`` if *rubrics_dir* doesn't exist (wheel
+    install), logs a warning and skips any YAML with a malformed
+    ``criteria`` entry, and never raises.  Skips files whose stem starts
+    with ``_`` to avoid noisy warnings from non-rubric helper files.
+    """
+    if rubrics_dir is None or not rubrics_dir.is_dir():
+        return {}
+
+    descriptions: dict[str, dict[str, str]] = {}
+    for yaml_path in sorted(rubrics_dir.glob("*.yaml")):
+        if yaml_path.stem.startswith("_"):
+            continue
+        try:
+            data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+            criteria = data.get("criteria") if isinstance(data, dict) else None
+            if not isinstance(criteria, list):
+                logger.warning("Skipping %s: no 'criteria' list found", yaml_path.name)
+                continue
+            cat: dict[str, str] = {}
+            for entry in criteria:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("name")
+                desc = entry.get("description")
+                if isinstance(name, str) and isinstance(desc, str):
+                    cat[name] = desc
+            if cat:
+                descriptions[yaml_path.stem] = cat
+        except Exception:
+            logger.warning(
+                "Failed to parse %s, skipping", yaml_path.name, exc_info=True
+            )
+    return descriptions
+
+
 def build(
     showcase_dir: Path,
     output_dir: Path,
     include_reports: bool = True,
     dataset_dir: Path | None = None,
     docs_dir: Path | None = None,
+    rubrics_dir: Path | None = None,
 ) -> BuildReport:
     """Render the static leaderboard site.
 
@@ -396,6 +455,7 @@ def build(
     rows = load_rows(showcase_dir)
     categories = _collect_categories(rows)
     avg_scores = _average_category_scores(rows, categories)
+    rubric_descriptions = _load_rubric_descriptions(rubrics_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "data").mkdir(exist_ok=True)
@@ -429,6 +489,9 @@ def build(
             rows=rows,
             categories=categories,
             leaderboard_data=leaderboard_data,
+            rubric_descriptions=rubric_descriptions,
+            category_descriptions=CATEGORY_DESCRIPTIONS,
+            criterion_columns=CRITERION_COLUMNS,
         ),
         encoding="utf-8",
     )
@@ -449,6 +512,8 @@ def build(
                 categories=categories,
                 row_data=row.model_dump(mode="json"),
                 avg_data=avg_scores,
+                rubric_descriptions=rubric_descriptions,
+                category_descriptions=CATEGORY_DESCRIPTIONS,
             ),
             encoding="utf-8",
         )

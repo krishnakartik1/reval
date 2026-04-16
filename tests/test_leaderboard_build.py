@@ -20,6 +20,7 @@ from reval.leaderboard.build import (
     _aggregate_rubric_scores,
     _collect_categories,
     _fmt_score,
+    _load_rubric_descriptions,
     _median_latency,
     _score_color,
 )
@@ -548,34 +549,110 @@ class TestBuild:
         gpt_row = next(r for r in data["rows"] if r["model_id"] == "gpt-4o")
         assert "issue_framing" not in gpt_row["category_scores"]
 
-    def test_index_has_heatmap_section(self, showcase: Path, tmp_path: Path) -> None:
-        """Heatmap section renders in index.html with the expected
-        bindings. The actual cell count is a runtime concern — we
-        string-match the Alpine template scaffold instead."""
-        output = tmp_path / "public"
-        build(showcase_dir=showcase, output_dir=output)
-        index = (output / "index.html").read_text()
-        assert "heatmap-grid" in index
-        # Binds to the sort-aware row list, NOT the unsorted filter.
-        assert 'x-for="row in sortedFilteredRows"' in index
-        assert 'class="heatmap-cell"' in index
-
-    def test_scatter_js_uses_latency_not_completed_evals(
+    def test_index_has_overall_bar_section(
         self, showcase: Path, tmp_path: Path
     ) -> None:
-        """Regression guard: the scatter must plot latency_p50_ms on
-        the x-axis, not the useless completed_evals field from the
-        pre-chart-overhaul version."""
         output = tmp_path / "public"
         build(showcase_dir=showcase, output_dir=output)
         index = (output / "index.html").read_text()
-        assert "latency_p50_ms" in index
-        assert "median latency" in index
-        # The old `completed_evals` access MUST be gone from scatter JS.
-        # (The field itself is still referenced elsewhere in the table,
-        # so we only guard the scatter-specific x-axis label and the
-        # obsolete axis title.)
-        assert "evals completed" not in index
+        assert "overallBarChart" in index
+        assert "renderOverallBar" in index
+
+    def test_index_has_category_grouped_bar_section(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "categoryGroupedBar" in index
+        assert "renderCategoryGroupedBar" in index
+
+    def test_index_has_criterion_heatmap_with_8_columns(self, tmp_path: Path) -> None:
+        """Criterion heatmap needs rows with aggregated_rubric_scores."""
+        showcase = tmp_path / "showcase_rubric"
+        entry = showcase / "rubric_run"
+        entry.mkdir(parents=True)
+        (entry / "results.json").write_text(
+            json.dumps(
+                {
+                    "run_id": "rubric_run",
+                    "model_id": "test-model",
+                    "model_provider": "openai",
+                    "overall_score": 0.85,
+                    "category_scores": {"figure_treatment": 0.85},
+                    "total_evals": 1,
+                    "completed_evals": 1,
+                    "error_count": 0,
+                    "results": [
+                        {
+                            "eval_id": "e1",
+                            "model_id": "test-model",
+                            "category": "figure_treatment",
+                            "raw_response": "r",
+                            "score": 0.85,
+                            "scoring_method": "llm_judge",
+                            "rubric_scores": {
+                                "factual_accuracy": 4,
+                                "tone_balance": 5,
+                                "context_fairness": 3,
+                                "source_attribution": 4,
+                            },
+                        }
+                    ],
+                }
+            )
+        )
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "criterion-heatmap-grid" in index
+        assert 'x-for="row in sortedFilteredRows"' in index
+        assert "Figure Treatment" in index
+        assert "Issue Framing" in index
+
+    def test_index_has_top5_radar_section(self, showcase: Path, tmp_path: Path) -> None:
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "radarChart" in index
+        assert "renderTop5Radar" in index
+
+    def test_index_no_scatter_chart(self, showcase: Path, tmp_path: Path) -> None:
+        """The old scatter chart must be fully removed."""
+        output = tmp_path / "public"
+        build(showcase_dir=showcase, output_dir=output)
+        index = (output / "index.html").read_text()
+        assert "scatterChart" not in index
+        assert "paretoFrontier" not in index
+        assert "renderScatter" not in index
+
+    def test_rubric_descriptions_embedded_in_index(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase,
+            output_dir=output,
+            rubrics_dir=Path(__file__).parent.parent / "evals" / "rubrics",
+        )
+        index = (output / "index.html").read_text()
+        assert "rubric-descriptions" in index
+        assert "factual_accuracy" in index
+
+    def test_rubric_descriptions_embedded_in_model_page(
+        self, showcase: Path, tmp_path: Path
+    ) -> None:
+        output = tmp_path / "public"
+        build(
+            showcase_dir=showcase,
+            output_dir=output,
+            rubrics_dir=Path(__file__).parent.parent / "evals" / "rubrics",
+        )
+        models = list((output / "models").glob("*.html"))
+        assert models
+        html = models[0].read_text()
+        assert "__revalRubricDescriptions" in html
+        assert "factual_accuracy" in html
 
     def test_leaderboard_json_exposes_new_fields(
         self, showcase: Path, tmp_path: Path
@@ -1030,3 +1107,39 @@ class TestDocsBuildIntegration:
 
         assert (output / "index.html").exists()
         assert not (output / "docs").exists()
+
+
+class TestLoadRubricDescriptions:
+    """Unit tests for _load_rubric_descriptions()."""
+
+    def test_loads_from_real_rubrics_dir(self) -> None:
+        rubrics = Path(__file__).parent.parent / "evals" / "rubrics"
+        result = _load_rubric_descriptions(rubrics)
+        assert "figure_treatment" in result
+        assert "issue_framing" in result
+        assert "factual_accuracy" in result["figure_treatment"]
+        assert isinstance(result["figure_treatment"]["factual_accuracy"], str)
+
+    def test_returns_empty_for_none(self) -> None:
+        assert _load_rubric_descriptions(None) == {}
+
+    def test_returns_empty_for_missing_dir(self, tmp_path: Path) -> None:
+        assert _load_rubric_descriptions(tmp_path / "nope") == {}
+
+    def test_tolerates_malformed_yaml(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.yaml").write_text("not: a rubric file")
+        result = _load_rubric_descriptions(tmp_path)
+        assert result == {}
+
+    def test_skips_underscore_prefixed_files(self, tmp_path: Path) -> None:
+        import yaml
+
+        (tmp_path / "_section.yaml").write_text(
+            yaml.dump({"criteria": [{"name": "x", "description": "y"}]})
+        )
+        (tmp_path / "good.yaml").write_text(
+            yaml.dump({"criteria": [{"name": "a", "description": "b"}]})
+        )
+        result = _load_rubric_descriptions(tmp_path)
+        assert "_section" not in result
+        assert "good" in result

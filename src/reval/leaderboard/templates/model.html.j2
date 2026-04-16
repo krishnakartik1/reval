@@ -127,7 +127,7 @@
       <div class="p-6" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-lg);">
         <div class="eyebrow mb-3">Figure treatment</div>
         <div style="height: 220px;">
-          <canvas id="criterionBars-figure_treatment"></canvas>
+          <canvas id="criterionBars-figure_treatment" data-category="figure_treatment"></canvas>
         </div>
         <p class="text-[11px] leading-[1.55] mt-4" style="color: var(--fg-dim);">
           <strong style="color: var(--fg);">Figure A only:</strong>
@@ -141,7 +141,7 @@
       <div class="p-6" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-lg);">
         <div class="eyebrow mb-3">Issue framing</div>
         <div style="height: 220px;">
-          <canvas id="criterionBars-issue_framing"></canvas>
+          <canvas id="criterionBars-issue_framing" data-category="issue_framing"></canvas>
         </div>
       </div>
       {% endif %}
@@ -224,6 +224,7 @@
     var rowData = {{ row_data | tojson | safe }};
     var avgData = {{ avg_data | tojson | safe }};
     var categories = {{ categories | tojson | safe }};
+    window.__revalRubricDescriptions = {{ rubric_descriptions | tojson | safe }};
 
     // Delta-vs-average cells
     categories.forEach(function (cat) {
@@ -361,6 +362,18 @@
       return palette.low;
     }
 
+    function titleCase(str) {
+      return str.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    function wrapLabel(label) {
+      if (label.length <= 14) return label;
+      var mid = Math.floor(label.length / 2);
+      var spaceIdx = label.lastIndexOf(' ', mid);
+      if (spaceIdx <= 0) return label;
+      return [label.slice(0, spaceIdx), label.slice(spaceIdx + 1)];
+    }
+
     function drawCriterionBars(canvasId, criteriaDict) {
       var canvas = document.getElementById(canvasId);
       if (!canvas || !window.Chart) return;
@@ -373,13 +386,13 @@
       var gridColor = isDark ? 'rgba(42,38,32,0.6)'   : 'rgba(217,211,195,0.5)';
       var labelColor = isDark ? '#d4cfc0' : '#3d3d3d';
 
-      var labels = Object.keys(criteriaDict).map(function (k) {
-        return k.replace(/_/g, ' ');
-      });
-      var values = Object.keys(criteriaDict).map(function (k) {
-        return criteriaDict[k];
-      });
+      var rawKeys = Object.keys(criteriaDict);
+      var labels = rawKeys.map(function (k) { return titleCase(k); });
+      var values = rawKeys.map(function (k) { return criteriaDict[k]; });
       var colors = values.map(function (v) { return criterionBarColor(v, isDark); });
+
+      var descriptions = window.__revalRubricDescriptions || {};
+      var categoryKey = canvas.dataset.category;
 
       new Chart(canvas.getContext('2d'), {
         type: 'bar',
@@ -397,6 +410,7 @@
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
+          layout: { padding: { left: 8, right: 8 } },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -406,10 +420,22 @@
               borderColor: isDark ? '#d47a47' : '#a85c32',
               borderWidth: 1,
               padding: 10,
-              titleFont: { family: 'Inter, sans-serif', size: 11, weight: '600' },
-              bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
+              displayColors: false,
+              titleFont: { family: 'Inter, sans-serif', size: 12, weight: '600' },
+              bodyFont: { family: 'Inter, sans-serif', size: 12, lineHeight: 1.4 },
               callbacks: {
-                label: function (ctx) { return ctx.raw.toFixed(3); },
+                title: function (ctxs) {
+                  return titleCase(rawKeys[ctxs[0].dataIndex]);
+                },
+                label: function (ctx) {
+                  return 'score: ' + ctx.raw.toFixed(3);
+                },
+                afterBody: function (ctxs) {
+                  var criterionKey = rawKeys[ctxs[0].dataIndex];
+                  var catDescs = descriptions[categoryKey];
+                  var desc = catDescs && catDescs[criterionKey];
+                  return desc ? [desc] : [];
+                }
               }
             }
           },
@@ -427,7 +453,11 @@
             y: {
               ticks: {
                 color: labelColor,
-                font: { family: 'Inter, sans-serif', size: 11, weight: '500' },
+                font: { family: 'Inter, sans-serif', size: 12, weight: '500' },
+                autoSkip: false,
+                callback: function (value, index) {
+                  return wrapLabel(labels[index]);
+                },
               },
               grid: { display: false },
             }

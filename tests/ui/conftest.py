@@ -205,11 +205,13 @@ def built_site_dir(
     # tests/ui/conftest.py → tests/ui → tests → <repo root>
     repo_root = UI_TEST_DIR.parent.parent
     docs_dir = repo_root / "docs"
+    rubrics_dir = repo_root / "evals" / "rubrics"
     build(
         showcase_dir=multi_judge_showcase,
         output_dir=output,
         include_reports=False,
         docs_dir=docs_dir if docs_dir.exists() else None,
+        rubrics_dir=rubrics_dir if rubrics_dir.exists() else None,
     )
     return output
 
@@ -245,76 +247,6 @@ def _serve_dir(directory: Path) -> Iterator[str]:
 def site_url(built_site_dir: Path) -> Iterator[str]:
     """Serve built_site_dir on 127.0.0.1 with a random free port."""
     yield from _serve_dir(built_site_dir)
-
-
-@pytest.fixture(scope="session")
-def no_latency_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Showcase dir whose runs deliberately omit latency data.
-
-    Scoped narrowly to ONE degradation test
-    (`test_scatter_falls_back_when_no_latency_data`): asserts the
-    scatter gracefully renders its 1-D strip plot when no row
-    carries a median latency. A real-world equivalent is an old
-    showcase whose `results.json` files were written before
-    `latency_ms` existed, or a run where every provider call
-    happened to fail to record latency.
-
-    Separate from `multi_judge_showcase` because the default
-    fixture intentionally DOES carry latency so the Pareto scatter
-    and the per-criterion bars on the model pages render against
-    real data. Keeping both "has data" and "no data" shapes behind
-    one fixture would force every test to opt into a fallback
-    branch it doesn't care about.
-    """
-    showcase = tmp_path_factory.mktemp("no_latency_showcase")
-    runs = [
-        _make_run(
-            slug="no_latency_a",
-            model_provider="bedrock",
-            model_id="amazon.nova-lite-v1:0",
-            judge_model_id="amazon.nova-lite-v1:0",
-            overall_score=0.82,
-            results=[],  # strip latency by emptying results
-        ),
-        _make_run(
-            slug="no_latency_b",
-            model_provider="openai",
-            model_id="gpt-4o-mini",
-            judge_model_id="amazon.nova-lite-v1:0",
-            overall_score=0.74,
-            results=[],
-        ),
-    ]
-    for run in runs:
-        run_dir = showcase / run["run_id"]
-        run_dir.mkdir()
-        (run_dir / "results.json").write_text(json.dumps(run, indent=2))
-    return showcase
-
-
-@pytest.fixture(scope="session")
-def no_latency_built_site(
-    no_latency_showcase: Path, tmp_path_factory: pytest.TempPathFactory
-) -> Path:
-    """Build the leaderboard against the no-latency showcase.
-
-    Skips `docs_dir` so the build is cheap — the fallback test
-    only cares about the scatter, not the Docs tab.
-    """
-    output = tmp_path_factory.mktemp("no_latency_public")
-    build(
-        showcase_dir=no_latency_showcase,
-        output_dir=output,
-        include_reports=False,
-        docs_dir=None,
-    )
-    return output
-
-
-@pytest.fixture(scope="session")
-def no_latency_site_url(no_latency_built_site: Path) -> Iterator[str]:
-    """Serve the no-latency built site on its own random port."""
-    yield from _serve_dir(no_latency_built_site)
 
 
 @pytest.fixture

@@ -483,6 +483,48 @@ code, pre {
   border-radius: 4px;
 }
 
+/* ── Criterion heatmap (model × 8 rubric criteria) ───────── */
+
+.criterion-heatmap-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.2fr) repeat(8, minmax(60px, 1fr));
+  gap: 4px;
+  min-width: 700px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.criterion-heatmap-group-header {
+  display: contents;
+}
+
+.criterion-heatmap-group-header > * {
+  padding: 4px 10px;
+  color: var(--fg-dim);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.criterion-heatmap-sub-header {
+  display: contents;
+}
+
+.criterion-heatmap-sub-header > * {
+  padding: 4px 6px;
+  color: var(--fg-dim);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  text-align: center;
+  text-transform: capitalize;
+  border-bottom: 1px solid var(--border);
+}
+
 /* The .score-high/.score-mid/.score-low/.score-none classes at
    line 227-234 already set background + color for score cells —
    reuse them here by applying the same class names. */
