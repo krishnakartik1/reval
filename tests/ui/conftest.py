@@ -46,10 +46,10 @@ def _default_fixture_results(latency_base: int) -> list[dict[str, Any]]:
 
     Every run in the UI fixture needs populated `results` so the
     charts suite has real latency and rubric data to render. Without
-    this, the Pareto scatter falls back to a 1-D strip plot and the
-    per-criterion bars on the model page are absent — which would
-    require a second "happy path" fixture and violate the "extend
-    `multi_judge_showcase`, don't shadow it" rule in `reval/AGENTS.md`.
+    this, `latency_p50_ms` is None and `aggregated_rubric_scores` is
+    empty — the bar charts, criterion heatmap, and radar would have
+    no data, violating the "extend `multi_judge_showcase`, don't
+    shadow it" rule in `reval/AGENTS.md`.
 
     Shape each result dict to match `EvalResult.model_dump(mode="json")`
     exactly enough for `reval.leaderboard.build.load_rows()` and its
@@ -137,10 +137,9 @@ def multi_judge_showcase(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """
     showcase = tmp_path_factory.mktemp("showcase")
 
-    # Distinct latency bases so the Pareto frontier on the charts-suite
-    # scatter has non-trivial structure: {bedrock_nova, anthropic_sonnet}
-    # is the frontier (Bedrock is fastest, Anthropic has the top score),
-    # openrouter_opus is dominated.
+    # Distinct latency bases so latency_p50_ms has non-trivial spread
+    # in leaderboard.json, exercising the sorting and bar charts with
+    # real numeric data.
     runs = [
         _make_run(
             slug="bedrock_nova",

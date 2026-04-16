@@ -487,6 +487,7 @@ code, pre {
 
 .criterion-heatmap-grid {
   display: grid;
+  /* 8 = 4 figure_treatment + 4 issue_framing — sync with CRITERION_COLUMNS in build.py */
   grid-template-columns: minmax(200px, 1.2fr) repeat(8, minmax(60px, 1fr));
   gap: 4px;
   min-width: 700px;
