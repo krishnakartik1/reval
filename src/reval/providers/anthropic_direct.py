@@ -63,13 +63,11 @@ class AnthropicProvider(LLMProvider):
         }
         if system:
             kwargs["system"] = system
-        last_exc: anthropic.RateLimitError | None = None
         for attempt, delay in enumerate((*_RETRY_DELAYS, None)):
             try:
                 response = await self._client.messages.create(**kwargs)
                 break
             except anthropic.RateLimitError as exc:
-                last_exc = exc
                 if delay is None:
                     raise RateLimitError(str(exc)) from exc
                 logger.warning(
@@ -80,8 +78,6 @@ class AnthropicProvider(LLMProvider):
                     delay,
                 )
                 await asyncio.sleep(delay)
-        else:
-            raise RateLimitError(str(last_exc)) from last_exc
 
         text = next(
             (block.text for block in response.content if block.type == "text"),

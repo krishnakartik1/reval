@@ -16,6 +16,9 @@ import anthropic
 import pytest
 
 from reval.contracts.provider import CompletionResult, RateLimitError
+
+# _RETRY_DELAYS is private but imported here so call-count assertions stay DRY
+# if the constant changes — avoids hardcoding magic numbers in two places.
 from reval.providers.anthropic_direct import _RETRY_DELAYS, AnthropicProvider
 
 
