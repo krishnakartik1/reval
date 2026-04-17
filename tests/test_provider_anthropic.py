@@ -3,19 +3,23 @@
 Uses `anthropic.AsyncAnthropic` under the hood. We mock the client's
 `messages.create` to avoid real API calls and verify that `acomplete`
 returns a properly-constructed `CompletionResult` and re-raises
-`anthropic.RateLimitError` as `reval.contracts.provider.RateLimitError`.
+`anthropic.RateLimitError` as `reval.contracts.provider.RateLimitError`
+after exhausting the built-in retry backoff.
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
 import pytest
 
 from reval.contracts.provider import CompletionResult, RateLimitError
-from reval.providers.anthropic_direct import AnthropicProvider
+
+# _RETRY_DELAYS is private but imported here so call-count assertions stay DRY
+# if the constant changes — avoids hardcoding magic numbers in two places.
+from reval.providers.anthropic_direct import _RETRY_DELAYS, AnthropicProvider
 
 
 def _mock_message_response(text: str, input_tokens: int, output_tokens: int):
@@ -81,20 +85,53 @@ async def test_acomplete_filters_non_text_blocks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_acomplete_reraises_rate_limit() -> None:
+async def test_acomplete_reraises_rate_limit_after_retries() -> None:
+    """After exhausting all retries the provider surfaces RateLimitError."""
+    rate_exc = anthropic.RateLimitError(
+        "rate limited",
+        response=MagicMock(status_code=429),
+        body=None,
+    )
     client = MagicMock()
     client.messages = MagicMock()
-    client.messages.create = AsyncMock(
-        side_effect=anthropic.RateLimitError(
-            "rate limited",
-            response=MagicMock(status_code=429),
-            body=None,
-        )
-    )
+    client.messages.create = AsyncMock(side_effect=rate_exc)
     provider = AnthropicProvider(model_id="claude-sonnet-4", client=client)
 
-    with pytest.raises(RateLimitError):
-        await provider.acomplete(system=None, user="hi")
+    with patch(
+        "reval.providers.anthropic_direct.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
+        with pytest.raises(RateLimitError):
+            await provider.acomplete(system=None, user="hi")
+
+    # One initial attempt + one per retry delay before final raise.
+    assert client.messages.create.call_count == len(_RETRY_DELAYS) + 1
+    assert mock_sleep.call_count == len(_RETRY_DELAYS)
+    assert mock_sleep.call_args_list[0].args[0] == _RETRY_DELAYS[0]
+
+
+@pytest.mark.asyncio
+async def test_acomplete_retries_then_succeeds() -> None:
+    """Provider retries on 429 and returns the result on a later attempt."""
+    rate_exc = anthropic.RateLimitError(
+        "rate limited",
+        response=MagicMock(status_code=429),
+        body=None,
+    )
+    success = _mock_message_response("retry worked", 5, 2)
+    client = MagicMock()
+    client.messages = MagicMock()
+    client.messages.create = AsyncMock(side_effect=[rate_exc, success])
+    provider = AnthropicProvider(model_id="claude-sonnet-4", client=client)
+
+    with patch(
+        "reval.providers.anthropic_direct.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
+        result = await provider.acomplete(system=None, user="hi")
+
+    assert result.text == "retry worked"
+    assert client.messages.create.call_count == 2
+    assert mock_sleep.call_count == 1
+    assert mock_sleep.call_args_list[0].args[0] == _RETRY_DELAYS[0]
 
 
 def test_provider_name_is_anthropic() -> None:

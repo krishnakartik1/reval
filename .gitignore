@@ -6,3 +6,4 @@ tests/ui/__snapshots__/
 .claude
 .env
 .coverage
+uv.lock

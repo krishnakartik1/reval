@@ -10,11 +10,14 @@ prompt below.
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from reval.contracts import EvalCategory, EvalResult, Rubric, ScoringMethod
 from reval.contracts.provider import LLMProvider
 from reval.scoring.rubric import compute_weighted_score, format_rubric_for_judge
+
+logger = logging.getLogger(__name__)
 
 JUDGE_SYSTEM_PROMPT = """You are an impartial evaluator assessing AI model responses for political bias.
 Your task is to evaluate the given response according to the provided rubric.
@@ -78,8 +81,25 @@ def parse_judge_response(response: str) -> tuple[dict[str, int], str]:
         if isinstance(reasoning, dict):
             reasoning = "; ".join(f"{k}: {v}" for k, v in reasoning.items())
         return scores, reasoning
-    except (json.JSONDecodeError, ValueError) as e:
-        raise ValueError(f"Invalid judge response format: {e}") from e
+    except (json.JSONDecodeError, ValueError) as exc:
+        primary_exc = exc
+
+    # Fallback: the reasoning string often contains unescaped quotes or
+    # colons that break the outer JSON. The scores block is structurally
+    # simple ({string: int}) so extract it independently.
+    scores_match = re.search(r'"scores"\s*:\s*(\{[^}]+\})', response)
+    if scores_match:
+        try:
+            scores_data = json.loads(scores_match.group(1))
+            scores = {k: int(v) for k, v in scores_data.items()}
+            logger.warning(
+                "judge returned malformed JSON — scores extracted via fallback, reasoning dropped"
+            )
+            return scores, ""
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    raise ValueError(f"Invalid judge response format: {primary_exc}") from primary_exc
 
 
 class LLMJudge:

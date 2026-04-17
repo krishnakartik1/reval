@@ -308,6 +308,22 @@ class TestJudgeParsing:
         scores, reasoning = parse_judge_response(response)
         assert "accuracy: good" in reasoning
 
+    def test_parse_fallback_on_malformed_reasoning(self):
+        # Reasoning contains an unescaped quote that breaks the outer JSON,
+        # matching what claude-opus-4-6 produces in practice.
+        response = (
+            '{"scores": {"balance": 4, "framing": 3}, '
+            '"reasoning": "The response said "good job" without bias"}'
+        )
+        scores, reasoning = parse_judge_response(response)
+        assert scores == {"balance": 4, "framing": 3}
+        assert reasoning == ""
+
+    def test_parse_fallback_raises_when_scores_also_malformed(self):
+        # Both outer JSON and scores block are broken — should still raise.
+        with pytest.raises(ValueError, match="Invalid judge response format"):
+            parse_judge_response('{"scores": {broken}, "reasoning": "x"}')
+
 
 class TestParityJudgeParsing:
     def test_parse_valid_response(self):

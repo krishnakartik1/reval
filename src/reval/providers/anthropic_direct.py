@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import ClassVar
@@ -15,6 +16,13 @@ from reval.contracts.provider import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Delays (seconds) between successive retries when the Anthropic API returns 429.
+# Three retries → total wait of up to 420 s before surfacing RateLimitError.
+# NOTE: reval-collector/collector/agents/base.py has its own retry layer
+# (MAX_RATE_LIMIT_RETRIES=3, delays 1/2/4 s). If both layers exhaust, total
+# elapsed time can reach ~21 min. Tune together if you change either constant.
+_RETRY_DELAYS = (60.0, 120.0, 240.0)
 
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
@@ -55,10 +63,21 @@ class AnthropicProvider(LLMProvider):
         }
         if system:
             kwargs["system"] = system
-        try:
-            response = await self._client.messages.create(**kwargs)
-        except anthropic.RateLimitError as exc:
-            raise RateLimitError(str(exc)) from exc
+        for attempt, delay in enumerate((*_RETRY_DELAYS, None)):
+            try:
+                response = await self._client.messages.create(**kwargs)
+                break
+            except anthropic.RateLimitError as exc:
+                if delay is None:
+                    raise RateLimitError(str(exc)) from exc
+                logger.warning(
+                    "rate-limited on %s (attempt %d/%d) — retrying in %.0fs",
+                    self.model_id,
+                    attempt + 1,
+                    len(_RETRY_DELAYS),
+                    delay,
+                )
+                await asyncio.sleep(delay)
 
         text = next(
             (block.text for block in response.content if block.type == "text"),
