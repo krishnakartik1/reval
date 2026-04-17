@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "reval"
 version = "0.1.0"
-description = "Robust Evaluation of Values and Alignment in LLMs - A benchmark for measuring political bias"
+description = "Fact-aligned benchmark for evaluating political and ideological bias in LLMs. Uses counterfactual pairs, LLM-as-judge scoring, and a ground-truth taxonomy rather than symmetry assumptions. Bedrock / Anthropic / OpenAI / MiniMax / Ollama providers. US + India today; UK, Germany, Brazil planned."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    { name = "REVAL Team" }
+    { name = "REVAL Contributors" }
 ]
 keywords = ["llm", "benchmark", "bias", "evaluation", "alignment"]
 classifiers = [
@@ -78,9 +78,9 @@ docs = [
 reval = "reval.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/reval-benchmark/reval"
-Documentation = "https://github.com/reval-benchmark/reval#readme"
-Repository = "https://github.com/reval-benchmark/reval"
+Homepage = "https://github.com/krishnakartik1/reval"
+Documentation = "https://github.com/krishnakartik1/reval#readme"
+Repository = "https://github.com/krishnakartik1/reval"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/reval"]
